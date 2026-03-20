@@ -26,6 +26,12 @@
 | **OS Base** | Linux (Alpine o Arch) | Sistema operativo host |
 | **Drivers** | NVIDIA CUDA | Aceleración GPU |
 | **Filesystem** | BTRFS | Snapshots automáticos |
+| **Compositor** | Rust + smithay | Compositor Wayland custom para el hub de nodos |
+| **Render** | Vulkan + GLES2 | Renderizado GPU para compositor |
+| **Shaders** | GLSL / SPIR-V | Efectos visuales (glow, blur, transiciones) |
+| **Paquetería** | YEYO-PKG (.ypkg) | Sistema de paquetes/nodos propio |
+| **Containers (producción)** | Podman / containerd | Alternativa ligera a Docker para el OS final |
+| **Hardware IA** | Auto-detección | NVIDIA, AMD, Intel, NPU, Coral, Tenstorrent |
 
 ## Dependencias por Componente
 
@@ -151,6 +157,8 @@ volumes:
   ollama_data:
   storage_data:
 ```
+
+> **Nota:** Docker Compose es para DESARROLLO. En producción (YeyoOS instalado), los contenedores se gestionan directamente vía API de Podman/containerd por el YeyoOS Manager. El usuario nunca ve Docker.
 
 ## Interfaces Intercambiables (Contratos)
 

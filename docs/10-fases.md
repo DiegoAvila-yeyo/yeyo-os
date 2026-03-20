@@ -246,6 +246,54 @@ El proyecto se divide en fases incrementales. Cada fase produce algo funcional y
 
 ---
 
+## Fase 15: YEYO-PKG y Store
+
+**Objetivo:** Sistema de paquetes y marketplace de nodos.
+
+- [ ] Definir formato .ypkg
+- [ ] Implementar yeyo-pkg CLI (create, build, install, remove)
+- [ ] Sistema de firma digital de paquetes
+- [ ] Pipeline de seguridad (análisis estático, sandbox testing)
+- [ ] YEYO Store (servidor central de paquetes)
+- [ ] Niveles de confianza (Oficial, Verificado, Comunidad)
+- [ ] Generación dinámica de nodos por IA
+- [ ] Auto-actualización de nodos
+
+**Resultado:** Los usuarios pueden instalar, crear y compartir nodos.
+
+---
+
+## Fase 16: Empresa y Corporativo
+
+**Objetivo:** Despliegue multi-máquina para empresas.
+
+- [ ] Arquitectura de islas independientes (cada PC aislada)
+- [ ] Guardian distribuido (seguridad centralizada)
+- [ ] Actualizaciones firmadas desde servidor central
+- [ ] VLANs y segmentación de red
+- [ ] Jerarquía departamental de privilegios
+- [ ] Auditoría centralizada
+- [ ] Compliance y políticas de retención
+
+**Resultado:** Una empresa puede desplegar YeyoOS en todas sus máquinas de forma segura.
+
+---
+
+## Fase 17: Expansión de Hardware
+
+**Objetivo:** Soporte para hardware especializado de IA.
+
+- [ ] Soporte NPU (Intel, AMD, Qualcomm)
+- [ ] Integración con Google Coral y Hailo
+- [ ] Soporte Tenstorrent / Groq (cuando estén disponibles)
+- [ ] Multi-GPU con balanceo automático
+- [ ] Hardware Manager con auto-detección
+- [ ] GPU Scheduler con prioridades
+
+**Resultado:** YeyoOS aprovecha automáticamente cualquier hardware de IA disponible.
+
+---
+
 ## Orden de Prioridad
 
 ```
@@ -260,4 +308,7 @@ VALIOSO (experiencia completa):
 
 FUTURO (escalamiento):
   Fase 12 → Fase 13 → Fase 14
+
+EXPANSIÓN (ecosistema):
+  Fase 15 → Fase 16 → Fase 17
 ```

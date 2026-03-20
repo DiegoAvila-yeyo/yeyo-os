@@ -23,12 +23,18 @@ Crear lo inimaginable. Un sistema que:
 | 02 | [Arquitectura del Sistema](docs/02-arquitectura.md) | Estructura técnica, capas e interfaces intercambiables |
 | 03 | [Interfaz de Usuario](docs/03-interfaz.md) | Diseño visual: nodos flotantes, layouts de cada módulo |
 | 04 | [Nodos y Funcionalidades](docs/04-nodos.md) | Detalle de cada nodo: Imagen, Video, Código, etc. |
-| 05 | [Sistema de Memoria](docs/05-memoria.md) | Las 5 capas de memoria persistente |
+| 05 | [Sistema de Memoria](docs/05-memoria.md) | Flash Memory: memoria unificada sin olvido |
 | 06 | [Seguridad](docs/06-seguridad.md) | Sandbox, zonas de acceso, botón de pánico |
 | 07 | [Anti-Alucinación](docs/07-anti-alucinacion.md) | Sistema multi-agente de verificación |
 | 08 | [Escalabilidad](docs/08-escalabilidad.md) | De PC personal a servidores |
 | 09 | [Stack Tecnológico](docs/09-stack-tecnologico.md) | Tecnologías, herramientas y dependencias |
 | 10 | [Fases de Desarrollo](docs/10-fases.md) | Roadmap completo del proyecto |
+| 11 | [Compositor Visual](docs/11-compositor.md) | YEYO Compositor: Wayland, shaders, integración con IA |
+| 12 | [Sistema de Paquetes](docs/12-yeyo-pkg.md) | YEYO-PKG: formato .ypkg, Store, instalación de nodos |
+| 13 | [Code Dojo](docs/13-code-dojo.md) | Agentes de código, RAG, LoRA, entrenamiento automático |
+| 14 | [Hardware](docs/14-hardware.md) | Compatibilidad, GPU Scheduler, estrategias de optimización |
+
+> 🔒 **Nota:** La documentación de seguridad se encuentra en un repositorio privado separado (`yeyo-os-security`) con 8 documentos detallados y 31+ capas de protección.
 
 ## Hardware Disponible
 

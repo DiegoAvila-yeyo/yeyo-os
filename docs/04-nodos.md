@@ -222,6 +222,36 @@ Cada archivo se guarda con:
 
 ---
 
+### ⛏️ Nodo Minería
+
+**Propósito:** Gestión inteligente de ASICs de minería de criptomonedas.
+
+**Layout:** Chat (izquierda) + Dashboard de minería (derecha)
+
+**Importante:** La GPU NUNCA se usa para minería — es exclusivamente para IA.
+
+**Cómo funciona:**
+- ASICs se conectan a YeyoOS vía red local (mismo router)
+- ASICs están en una VLAN separada (no pueden acceder a YeyoOS, solo YeyoOS los controla)
+- La IA optimiza:
+  - Qué criptomoneda minar (según precio/dificultad/electricidad)
+  - Cuándo minar (horarios de electricidad barata)
+  - Pool de minería óptimo
+  - Temperatura y vida útil de los ASICs
+
+**Herramientas Backend:**
+- APIs de pools de minería
+- APIs de precio de criptomonedas
+- Monitoreo de hardware ASIC vía red local
+- Dashboard de rentabilidad
+
+**Seguridad:**
+- Control unidireccional: YeyoOS → ASICs (nunca al revés)
+- VLAN aislada
+- Los ASICs no tienen acceso a la red principal ni a los datos del sistema
+
+---
+
 ## Creación Dinámica de Nodos
 
 El sistema permite crear nuevos nodos desde el YEYO central:
@@ -237,3 +267,5 @@ El sistema permite crear nuevos nodos desde el YEYO central:
 - Todos los nodos siguen el mismo patrón (Chat + Área de trabajo)
 - Los componentes compartidos (ChatPanel, MiniChat) se reutilizan
 - El backend de FastAPI puede registrar nuevas rutas dinámicamente
+
+**YEYO-PKG:** Los nodos se distribuyen como paquetes `.ypkg` a través de la YEYO Store. Los usuarios pueden instalar nodos creados por la comunidad o crear los suyos propios simplemente describiéndolos a la IA. Ver [12-yeyo-pkg.md](12-yeyo-pkg.md) para más detalles.

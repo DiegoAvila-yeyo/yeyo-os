@@ -1,0 +1,281 @@
+"""
+YeyoOS — Chat API Endpoints
+Micro-fase 2.15 — Capa 2: Cerebro
+
+Endpoints REST para funcionalidad de chat:
+- POST /api/v1/chat — enviar mensaje
+- POST /api/v1/chat/stream — respuesta en streaming (SSE)
+- GET /api/v1/chat/conversations — listar conversaciones
+- GET /api/v1/chat/conversations/{id} — obtener conversación
+- POST /api/v1/chat/conversations — crear conversación
+- POST /api/v1/chat/{message_id}/feedback — enviar feedback
+"""
+
+import logging
+import uuid
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger("yeyoos.api.chat")
+
+router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+
+
+# ========== Request/Response Models ==========
+
+class ChatRequest(BaseModel):
+    """Request para enviar un mensaje de chat."""
+    message: str = Field(..., min_length=1, max_length=2000)
+    conversation_id: Optional[str] = None
+
+
+class ChatResponse(BaseModel):
+    """Response de un mensaje de chat."""
+    response: str
+    conversation_id: str
+    message_id: str
+    tokens_used: int = 0
+
+
+class CreateConversationRequest(BaseModel):
+    """Request para crear una conversación."""
+    title: str = Field(default="Nueva conversación", max_length=200)
+
+
+class ConversationResponse(BaseModel):
+    """Response de una conversación."""
+    id: str
+    title: str
+    message_count: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class FeedbackRequest(BaseModel):
+    """Request para enviar feedback."""
+    rating: int = Field(..., ge=1, le=5)
+    comment: str = Field(default="", max_length=500)
+
+
+class CorrectionRequest(BaseModel):
+    """Request para reportar corrección."""
+    correction: str = Field(..., min_length=1, max_length=1000)
+
+
+class FeedbackResponse(BaseModel):
+    """Response de feedback."""
+    id: str
+    message_id: str
+    rating: int
+    comment: str = ""
+
+
+# ========== Dependency Injection ==========
+# Estas funciones se sobreescriben en la app principal
+# para inyectar las dependencias reales
+
+async def get_chat_service():
+    """Placeholder — sobreescribir con dependency injection."""
+    raise HTTPException(status_code=503, detail="Chat service not initialized")
+
+
+async def get_conversation_manager():
+    """Placeholder — sobreescribir con dependency injection."""
+    raise HTTPException(status_code=503, detail="Conversation manager not initialized")
+
+
+async def get_feedback_service():
+    """Placeholder — sobreescribir con dependency injection."""
+    raise HTTPException(status_code=503, detail="Feedback service not initialized")
+
+
+# ========== Endpoints ==========
+
+@router.post("", response_model=ChatResponse)
+async def send_message(
+    request: ChatRequest,
+    chat_service=Depends(get_chat_service),
+    conv_manager=Depends(get_conversation_manager),
+):
+    """
+    Envía un mensaje de chat y obtiene respuesta.
+    Si no se proporciona conversation_id, crea una nueva conversación.
+    """
+    try:
+        # Crear conversación si no existe
+        conv_id = request.conversation_id
+        if not conv_id:
+            conv_id = await conv_manager.create_conversation()
+
+        # Obtener historial
+        history = await conv_manager.get_history(conv_id, limit=10)
+        history_dicts = [
+            {"role": m.role, "content": m.content} for m in history
+        ]
+
+        # Guardar mensaje del usuario
+        msg_id = str(uuid.uuid4())
+        await conv_manager.add_message(conv_id, "user", request.message)
+
+        # Generar respuesta
+        response = await chat_service.send_message(
+            user_input=request.message,
+            conversation_history=history_dicts,
+            conversation_id=conv_id,
+        )
+
+        # Guardar respuesta del asistente
+        await conv_manager.add_message(conv_id, "assistant", response)
+
+        return ChatResponse(
+            response=response,
+            conversation_id=conv_id,
+            message_id=msg_id,
+        )
+
+    except Exception as e:
+        logger.error(f"Error en chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/stream")
+async def send_message_stream(
+    request: ChatRequest,
+    chat_service=Depends(get_chat_service),
+    conv_manager=Depends(get_conversation_manager),
+):
+    """
+    Envía un mensaje y recibe la respuesta en streaming (SSE).
+    """
+    try:
+        conv_id = request.conversation_id
+        if not conv_id:
+            conv_id = await conv_manager.create_conversation()
+
+        history = await conv_manager.get_history(conv_id, limit=10)
+        history_dicts = [
+            {"role": m.role, "content": m.content} for m in history
+        ]
+
+        await conv_manager.add_message(conv_id, "user", request.message)
+
+        async def event_generator():
+            full_response = []
+            async for chunk in chat_service.send_message_stream(
+                user_input=request.message,
+                conversation_history=history_dicts,
+                conversation_id=conv_id,
+            ):
+                full_response.append(chunk)
+                yield f"data: {chunk}\n\n"
+
+            # Guardar respuesta completa
+            complete = "".join(full_response)
+            await conv_manager.add_message(conv_id, "assistant", complete)
+            yield f"data: [DONE]\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error en streaming: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/conversations")
+async def list_conversations(
+    limit: int = 50,
+    conv_manager=Depends(get_conversation_manager),
+):
+    """Lista todas las conversaciones."""
+    try:
+        return await conv_manager.list_conversations(limit=limit)
+    except Exception as e:
+        logger.error(f"Error listando conversaciones: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/conversations/{conversation_id}")
+async def get_conversation(
+    conversation_id: str,
+    conv_manager=Depends(get_conversation_manager),
+):
+    """Obtiene una conversación específica con historial."""
+    try:
+        conv = await conv_manager.get_conversation(conversation_id)
+        if conv is None:
+            raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        history = await conv_manager.get_history(conversation_id)
+        conv["messages"] = [
+            {"role": m.role, "content": m.content} for m in history
+        ]
+        return conv
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error obteniendo conversación: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/conversations")
+async def create_conversation(
+    request: CreateConversationRequest,
+    conv_manager=Depends(get_conversation_manager),
+):
+    """Crea una nueva conversación."""
+    try:
+        conv_id = await conv_manager.create_conversation(title=request.title)
+        return {"id": conv_id, "title": request.title}
+    except Exception as e:
+        logger.error(f"Error creando conversación: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{message_id}/feedback")
+async def submit_feedback(
+    message_id: str,
+    request: FeedbackRequest,
+    feedback_service=Depends(get_feedback_service),
+):
+    """Envía feedback para un mensaje."""
+    try:
+        result = await feedback_service.rate_response(
+            message_id=message_id,
+            rating=request.rating,
+            comment=request.comment,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error en feedback: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{message_id}/correction")
+async def submit_correction(
+    message_id: str,
+    request: CorrectionRequest,
+    feedback_service=Depends(get_feedback_service),
+):
+    """Reporta una corrección para un mensaje."""
+    try:
+        result = await feedback_service.report_incorrect(
+            message_id=message_id,
+            correction=request.correction,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error en corrección: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,5 +1,5 @@
 # 🫀 CAPA 5: ÓRGANOS — Prompts de Ejecución
-# Total: 22 micro-fases → 24 prompts (20 VSCODE + 2 VSCODE-SIMPLE + 1 MIXTA + 1 extra)
+# Total: 33 micro-fases → 35 prompts (31 VSCODE + 2 VSCODE-SIMPLE + 2 MIXTA)
 # Flujo: Copiar prompt → Pegar en Copilot (VS Code o CLI) → Ejecutar → Verificar → Siguiente
 # ⚠️ GPU NUNCA para minería. FFmpeg SIEMPRE validado. Sandbox: sin red, 30s timeout, container efímero.
 
@@ -32,6 +32,17 @@
 | 5.19 — MiniChat v3 (Actions) | [prompt-5.19-1.md](prompt-5.19-1.md) | VSCODE | Media |
 | 5.20 — Node Health Monitor | [prompt-5.20-1.md](prompt-5.20-1.md) | VSCODE | Simple |
 | 5.21 — Integration Test Capa 5 | [prompt-5.21-1.md](prompt-5.21-1.md) | MIXTA | Compleja |
+| 5.22 — Flash Memory Checkpoints para Grafos | [prompt-5.22-1.md](prompt-5.22-1.md) | VSCODE | Compleja |
+| 5.23 — Cache de Resultados de Nodos | [prompt-5.23-1.md](prompt-5.23-1.md) | VSCODE | Media |
+| 5.24 — GeneradorGrafos (IA genera grafos) | [prompt-5.24-1.md](prompt-5.24-1.md) | VSCODE | Compleja |
+| 5.25 — GrafoValidador (Seguridad AST) | [prompt-5.25-1.md](prompt-5.25-1.md) | VSCODE | Compleja |
+| 5.26 — Integration Test Grafos Avanzados | [prompt-5.26-1.md](prompt-5.26-1.md) | MIXTA | Compleja |
+| 5.27 — Voice Interface: Wake Word + STT + TTS + MicIndicator | [prompt-5.27-1.md](prompt-5.27-1.md) | VSCODE | Compleja |
+| 5.28 — Pipeline Investigador | [prompt-5.28-1.md](prompt-5.28-1.md) | VSCODE | Compleja |
+| 5.29 — Micro-Tareas con DB | [prompt-5.29-1.md](prompt-5.29-1.md) | VSCODE | Compleja |
+| 5.30 — Razonamiento Extendido | [prompt-5.30-1.md](prompt-5.30-1.md) | VSCODE | Compleja |
+| 5.31 — Caché de Patrones | [prompt-5.31-1.md](prompt-5.31-1.md) | VSCODE | Compleja |
+| 5.32 — Selector de Modelo | [prompt-5.32-1.md](prompt-5.32-1.md) | VSCODE | Media |
 
 ---
 
@@ -61,7 +72,18 @@
 | 5.19 MiniChat v3 | 1 | VSCODE | ⬜ |
 | 5.20 Health Monitor | 1 | VSCODE | ⬜ |
 | 5.21 Integration Test | 1 | MIXTA | ⬜ |
-| **TOTAL** | **24** | **20 VSCODE + 2 SIMPLE + 1 MIXTA + 1 extra** | |
+| 5.22 Flash Memory Checkpoints | 1 | VSCODE | ⬜ |
+| 5.23 Cache de Resultados | 1 | VSCODE | ⬜ |
+| 5.24 GeneradorGrafos (IA) | 1 | VSCODE | ⬜ |
+| 5.25 GrafoValidador (AST) | 1 | VSCODE | ⬜ |
+| 5.26 Integration Test Grafos Avanzados | 1 | MIXTA | ⬜ |
+| 5.27 Voice Interface | 1 | VSCODE | ⬜ |
+| 5.28 Pipeline Investigador | 1 | VSCODE | ⬜ |
+| 5.29 Micro-Tareas con DB | 1 | VSCODE | ⬜ |
+| 5.30 Razonamiento Extendido | 1 | VSCODE | ⬜ |
+| 5.31 Caché de Patrones | 1 | VSCODE | ⬜ |
+| 5.32 Selector de Modelo | 1 | VSCODE | ⬜ |
+| **TOTAL** | **35** | **31 VSCODE + 2 SIMPLE + 2 MIXTA** | |
 
 ---
 
@@ -84,6 +106,15 @@ Capa 5 son los ÓRGANOS de YeyoOS. Cada nodo es un órgano especializado que cob
 - **Health Monitor**: Monitoreo de salud, auto-restart, máximo 3 intentos.
 
 **REGLA DE ORO**: GPU NUNCA para minería — exclusivamente para IA. FFmpeg SIEMPRE validado antes de ejecutar. Code sandbox: sin red, 30s timeout, container efímero auto-destruido. MiniChat SIEMPRE pide confirmación antes de ejecutar acciones.
+
+### Grafos Avanzados (5.22-5.26)
+
+Las micro-fases 5.22-5.26 añaden features avanzadas al YeyoOrquestador (integración con Capa 4):
+
+- **GrafoCheckpoint (5.22)**: guarda `EstadoGrafo` en Flash Memory después de cada nodo completado. Permite reanudar ejecuciones interrumpidas desde el último checkpoint.
+- **NodoCache (5.23)**: wrapper que añade cache a cualquier nodo. Hash SHA256 del input → busca en Flash Memory. Cache hit evita re-ejecución (TTL: 24h).
+- **GeneradorGrafos (5.24)**: la IA genera código Python de grafos desde descripción en lenguaje natural. Valida y ejecuta en sandbox con globals limitados. Guarda en Flash Memory.
+- **GrafoValidador (5.25)**: análisis AST completo de seguridad. Detecta imports prohibidos, eval/exec/compile, atributos peligrosos (`__class__`, `__globals__`), verifica uso de nodos del catálogo.
 
 ## 🔗 Dependencias
 

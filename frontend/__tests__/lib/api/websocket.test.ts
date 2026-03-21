@@ -94,13 +94,13 @@ describe('WSClient', () => {
     it('no crea segunda conexion si ya esta abierta', () => {
       client.connect();
       mockWS.simulateOpen();
-      const callsBefore = (global.WebSocket as jest.Mock).mock.calls.length;
+      const callsBefore = (global.WebSocket as unknown as jest.Mock).mock.calls.length;
       client.connect();
-      expect((global.WebSocket as jest.Mock).mock.calls.length).toBe(callsBefore);
+      expect((global.WebSocket as unknown as jest.Mock).mock.calls.length).toBe(callsBefore);
     });
 
     it('status cambia a error si WebSocket lanza excepcion', () => {
-      (global.WebSocket as jest.Mock).mockImplementationOnce(() => {
+      (global.WebSocket as unknown as jest.Mock).mockImplementationOnce(() => {
         throw new Error('connection refused');
       });
       client.connect();
@@ -225,22 +225,22 @@ describe('WSClient', () => {
     it('intenta reconectar al desconectarse', () => {
       client.connect();
       mockWS.simulateOpen();
-      const wsCallCount = (global.WebSocket as jest.Mock).mock.calls.length;
+      const wsCallCount = (global.WebSocket as unknown as jest.Mock).mock.calls.length;
 
       mockWS.simulateClose();
       jest.advanceTimersByTime(DEFAULT_CONFIG.baseDelayMs + 100);
 
-      expect((global.WebSocket as jest.Mock).mock.calls.length).toBeGreaterThan(wsCallCount);
+      expect((global.WebSocket as unknown as jest.Mock).mock.calls.length).toBeGreaterThan(wsCallCount);
     });
 
     it('no reconecta despues de disconnect() manual', () => {
       client.connect();
       mockWS.simulateOpen();
       client.disconnect();
-      const wsCallCount = (global.WebSocket as jest.Mock).mock.calls.length;
+      const wsCallCount = (global.WebSocket as unknown as jest.Mock).mock.calls.length;
 
       jest.advanceTimersByTime(DEFAULT_CONFIG.baseDelayMs * 10);
-      expect((global.WebSocket as jest.Mock).mock.calls.length).toBe(wsCallCount);
+      expect((global.WebSocket as unknown as jest.Mock).mock.calls.length).toBe(wsCallCount);
     });
 
     it('incrementa reconnectAttempts', () => {

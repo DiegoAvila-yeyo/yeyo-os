@@ -6,7 +6,7 @@
  */
 
 export { useHubStore } from './hub-store';
-export type { HubState, CanvasSize, NodePosition } from './hub-store';
+export type { HubState, CanvasSize } from './hub-store';
 
 export { useChatStore } from './chat-store';
 export type { ChatState, ChatMessage } from './chat-store';

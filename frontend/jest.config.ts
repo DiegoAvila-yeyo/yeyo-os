@@ -4,9 +4,13 @@ const config: Config = {
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1',
+    // Shader files FIRST (before @/ catch-all)
+    '\\.vert$': '<rootDir>/__mocks__/shader.ts',
+    '\\.frag$': '<rootDir>/__mocks__/shader.ts',
     // Mock PixiJS (WebGL not available in jsdom)
     '^pixi\\.js$': '<rootDir>/__mocks__/pixi.js.ts',
+    // Path aliases
+    '^@/(.*)$': '<rootDir>/src/$1',
   },
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {

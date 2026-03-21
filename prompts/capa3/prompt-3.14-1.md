@@ -1,0 +1,247 @@
+## ═══════════════════════════════════════
+## MICRO-FASE 3.14 — Responsive Layout
+## Tipo: VSCODE | Prompts: 1 | Complejidad: Simple
+## ═══════════════════════════════════════
+
+### PROMPT 3.14-1 [VSCODE] — Layout responsivo con canvas central y paneles colapsables
+
+```
+Estamos construyendo YeyoOS, un OS AI-nativo con interfaz Neural Hub. Esta es la micro-fase 3.14 de Capa 3 (Cuerpo): crear el layout responsivo principal.
+
+CONTEXTO:
+- Micro-fases 3.0-3.13 completadas: Todos los componentes individuales listos
+- Layout principal: canvas (centro) + paneles (laterales)
+- Responsive: paneles colapsan en pantallas pequeñas
+- Mínimo viable: 1024x768
+- El canvas siempre toma el espacio restante
+- Principalmente desktop, pero handle resize
+
+Abre el directorio ~/yeyo-os/frontend en VS Code.
+
+CREAR:
+
+1. Crear estructura:
+   mkdir -p src/components/layout
+   mkdir -p __tests__/components/layout
+
+2. Crear archivo src/components/layout/AppLayout.tsx:
+
+   Ruta: ~/yeyo-os/frontend/src/components/layout/AppLayout.tsx
+   Contenido:
+
+   /**
+    * YeyoOS — AppLayout (Layout Principal)
+    * Micro-fase 3.14 — Capa 3: Cuerpo
+    *
+    * Layout responsivo: canvas central + paneles colapsables.
+    * Mínimo: 1024x768. Canvas siempre toma espacio restante.
+    */
+
+   'use client';
+
+   import { useEffect, useState, type ReactNode } from 'react';
+   import { useUIStore } from '@/lib/store/ui-store';
+
+   const MIN_WIDTH = 1024;
+   const MIN_HEIGHT = 768;
+
+   export interface AppLayoutProps {
+     canvas: ReactNode;
+     chatPanel?: ReactNode;
+     miniChat?: ReactNode;
+     notifications?: ReactNode;
+   }
+
+   export default function AppLayout({
+     canvas,
+     chatPanel,
+     miniChat,
+     notifications,
+   }: AppLayoutProps) {
+     const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
+     const { sidebarCollapsed, activePanel } = useUIStore();
+
+     useEffect(() => {
+       const updateSize = () => {
+         setWindowSize({
+           width: window.innerWidth,
+           height: window.innerHeight,
+         });
+       };
+       updateSize();
+       window.addEventListener('resize', updateSize);
+       return () => window.removeEventListener('resize', updateSize);
+     }, []);
+
+     const isBelowMinimum = windowSize.width > 0 && (windowSize.width < MIN_WIDTH || windowSize.height < MIN_HEIGHT);
+
+     if (isBelowMinimum) {
+       return (
+         <div
+           data-testid="minimum-size-warning"
+           className="fixed inset-0 bg-[#0a0a0f] flex items-center justify-center z-[1000]"
+         >
+           <div className="text-center p-8">
+             <p className="text-4xl mb-4">⚠️</p>
+             <h2 className="text-white text-xl font-semibold mb-2">
+               Pantalla demasiado pequeña
+             </h2>
+             <p className="text-gray-400 text-sm">
+               YeyoOS requiere mínimo {MIN_WIDTH}x{MIN_HEIGHT} píxeles.
+             </p>
+             <p className="text-gray-500 text-xs mt-2">
+               Actual: {windowSize.width}x{windowSize.height}
+             </p>
+           </div>
+         </div>
+       );
+     }
+
+     return (
+       <div
+         data-testid="app-layout"
+         className="fixed inset-0 bg-[#0a0a0f] overflow-hidden flex"
+       >
+         <main
+           data-testid="canvas-area"
+           className="flex-1 relative overflow-hidden"
+         >
+           {canvas}
+         </main>
+
+         {chatPanel}
+         {miniChat}
+         {notifications}
+       </div>
+     );
+   }
+
+   export { MIN_WIDTH, MIN_HEIGHT };
+
+3. Crear archivo __tests__/components/layout/AppLayout.test.tsx:
+
+   Ruta: ~/yeyo-os/frontend/__tests__/components/layout/AppLayout.test.tsx
+   Contenido:
+
+   /**
+    * Tests para AppLayout — Micro-fase 3.14
+    */
+
+   import { render, screen, act } from '@testing-library/react';
+   import AppLayout, { MIN_WIDTH, MIN_HEIGHT } from '@/components/layout/AppLayout';
+   import { useUIStore } from '@/lib/store/ui-store';
+
+   // Mock UIStore
+   jest.mock('@/lib/store/ui-store', () => ({
+     useUIStore: jest.fn(() => ({
+       sidebarCollapsed: false,
+       activePanel: null,
+     })),
+   }));
+
+   function setWindowSize(width: number, height: number) {
+     Object.defineProperty(window, 'innerWidth', { value: width, writable: true });
+     Object.defineProperty(window, 'innerHeight', { value: height, writable: true });
+     window.dispatchEvent(new Event('resize'));
+   }
+
+   describe('AppLayout', () => {
+     beforeEach(() => {
+       setWindowSize(1920, 1080);
+     });
+
+     describe('rendering', () => {
+       it('renderiza el layout principal', () => {
+         render(
+           <AppLayout canvas={<div data-testid="mock-canvas">Canvas</div>} />
+         );
+         expect(screen.getByTestId('app-layout')).toBeInTheDocument();
+       });
+
+       it('renderiza el canvas area', () => {
+         render(
+           <AppLayout canvas={<div data-testid="mock-canvas">Canvas</div>} />
+         );
+         expect(screen.getByTestId('canvas-area')).toBeInTheDocument();
+         expect(screen.getByTestId('mock-canvas')).toBeInTheDocument();
+       });
+
+       it('renderiza children opcionales', () => {
+         render(
+           <AppLayout
+             canvas={<div>Canvas</div>}
+             chatPanel={<div data-testid="chat">Chat</div>}
+             miniChat={<div data-testid="mini">Mini</div>}
+             notifications={<div data-testid="notifs">Notifs</div>}
+           />
+         );
+         expect(screen.getByTestId('chat')).toBeInTheDocument();
+         expect(screen.getByTestId('mini')).toBeInTheDocument();
+         expect(screen.getByTestId('notifs')).toBeInTheDocument();
+       });
+     });
+
+     describe('minimum size', () => {
+       it('muestra warning cuando está por debajo del mínimo', () => {
+         render(
+           <AppLayout canvas={<div>Canvas</div>} />
+         );
+         act(() => {
+           setWindowSize(800, 600);
+         });
+         expect(screen.getByTestId('minimum-size-warning')).toBeInTheDocument();
+       });
+
+       it('muestra dimensión actual en el warning', () => {
+         render(
+           <AppLayout canvas={<div>Canvas</div>} />
+         );
+         act(() => {
+           setWindowSize(800, 600);
+         });
+         expect(screen.getByText(/800x600/)).toBeInTheDocument();
+       });
+
+       it('no muestra warning en tamaño adecuado', () => {
+         render(
+           <AppLayout canvas={<div>Canvas</div>} />
+         );
+         expect(screen.queryByTestId('minimum-size-warning')).not.toBeInTheDocument();
+       });
+     });
+
+     describe('constantes', () => {
+       it('MIN_WIDTH es 1024', () => {
+         expect(MIN_WIDTH).toBe(1024);
+       });
+
+       it('MIN_HEIGHT es 768', () => {
+         expect(MIN_HEIGHT).toBe(768);
+       });
+     });
+   });
+
+4. Ejecutar tests:
+   cd ~/yeyo-os/frontend
+   npx jest __tests__/components/layout/AppLayout.test.tsx --no-cache
+
+VERIFICAR:
+- [ ] Archivo src/components/layout/AppLayout.tsx existe
+- [ ] Canvas area toma espacio restante con flex-1
+- [ ] Paneles opcionales se renderizan cuando se pasan
+- [ ] Warning aparece por debajo de 1024x768
+- [ ] Muestra dimensión actual en el warning
+- [ ] TODOS los tests pasan
+
+SI FALLA:
+- Window mock: usar Object.defineProperty para innerWidth/innerHeight
+- UIStore mock: verificar que jest.mock retorna la estructura correcta
+- useState initial value: windowSize empieza en 0 hasta useEffect
+
+NO HACER:
+- No implementar sidebar colapsable (solo preparar el prop)
+- No agregar animaciones de transición de paneles
+- No crear breakpoints para tablet/mobile (desktop-first)
+
+GATE: AppLayout renderiza con canvas central, paneles opcionales, minimum size warning, todos los tests pasan.
+```

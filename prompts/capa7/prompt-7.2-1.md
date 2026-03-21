@@ -481,3 +481,48 @@ NO HACER:
 
 GATE: Extractor prepara datos de Flash Memory en JSONL, filtra privacidad, deduplica, valida mínimo 100 muestras, todos los tests pasan.
 ```
+
+
+---
+
+## EXTENSION 7.2-B: Session Capture + Git Intelligence Observer
+## Aniadido: 2026-03-21 - YeyoOS aprende de como fue construida
+
+### CONCEPTO:
+- Copilot actuo como padre programador durante Capas 0-7
+- Cada sesion: prompt -> decision -> codigo -> bug -> fix = training data valor 5.0
+- Git history = diario completo de construccion del sistema
+- Objetivo: modelo local aprende a programar como Copilot, especializado en YeyoOS
+
+### CREAR ADICIONALMENTE:
+
+#### A) src/training/session_capture.py
+- Captura pares (prompt_usuario, codigo_generado, bug_encontrado, fix_aplicado)
+- source='copilot_session', quality_weight=5.0 (maximo valor)
+- Guarda en data/sessions/ como JSONL rotativo (max 100MB por archivo)
+- NUNCA captura credenciales, tokens, .env files
+
+#### B) src/training/git_observer.py
+- Lee git log: mensaje del commit = intencion, diff = solucion
+- Convierte en TrainingSample: instruction=mensaje, output=diff
+- source='git_history', quality_weight=2.5
+- Filtra: merges, version bumps, archivos .env/*.key/*.secret
+
+#### C) Actualizar extract_all() en data_extractor.py
+Anadir parametros:
+  include_git: bool = True
+  include_sessions: bool = True
+Incluir ambas fuentes en el pipeline de extraccion
+
+### FILOSOFIA DE APRENDIZAJE:
+  Flash Memory    = lo que el USUARIO le ensena
+  Git Observer    = lo que COPILOT (padre) le ensena via commits
+  Session Capture = observar al padre programar en tiempo real
+  Juntos          = YeyoOS AI aprende a ser Copilot especializado en si misma
+
+### GATE EXTENDIDO:
+- [ ] session_capture.py captura pares prompt/codigo de sesiones Copilot
+- [ ] git_observer.py extrae training data de commits
+- [ ] Ambos omiten .env, tokens, credenciales
+- [ ] extract_all() acepta include_git e include_sessions
+- [ ] Tests unitarios para ambos modulos

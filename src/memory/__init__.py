@@ -1,1 +1,3 @@
-from .interfaces import MemoriaProvider, Memory, MemoryTier, MemoryType
+from .interfaces import MemoriaProvider, MemoryTier, MemoryType
+from .models import Memory
+from .flash_memory import FlashMemory

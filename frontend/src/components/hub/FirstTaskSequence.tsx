@@ -109,8 +109,11 @@ export function FirstTaskSequence({
     return () => {
       cancelAnimationFrame(animRef.current)
       cancelAnimationFrame(energyAnimRef.current)
-      app.destroy(false)
-      appRef.current = null
+      if (appRef.current) {
+        const app = appRef.current
+        appRef.current = null
+        try { app.destroy({ removeView: false }) } catch (_) {}
+      }
     }
   }, [canvasWidth, canvasHeight])
 

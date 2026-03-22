@@ -45,11 +45,11 @@ const TOPBAR_STYLES: React.CSSProperties = {
 
 export function Topbar({ tabs, onTabClick, onTabClose, onToggleSidebar, sidebarOpen }: TopbarProps) {
   const pipelineActivo = useHubStore((s) => s.pipelineActivo)
-  const activarKillSwitch = useSystemStore((s) => s.activarKillSwitch)
 
   const handleKillSwitch = useCallback(() => {
-    activarKillSwitch()
-  }, [activarKillSwitch])
+    // Disparar evento de teclado para activar KillSwitchOverlay (que escucha Ctrl+Alt+K)
+    window.dispatchEvent(new KeyboardEvent('keydown', { ctrlKey: true, altKey: true, key: 'k', bubbles: true }))
+  }, [])
 
   const visibleTabs = tabs.slice(0, MAX_TABS)
 

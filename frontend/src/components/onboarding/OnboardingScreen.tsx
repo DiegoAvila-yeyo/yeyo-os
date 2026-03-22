@@ -2,15 +2,14 @@
  * YeyoOS — OnboardingScreen
  * Micro-fase 3.18 — Capa 3: Cuerpo
  *
- * Flujo completo de onboarding:
- *   0. Todo gris (saturation=0) — Hub inerte visible detrás
- *   1. Pulso azul del nodo central (1 segundo)
- *   2. Saturación 0→1 en 4 segundos (center-out)
- *   3. Typewriter: "Hola." → pausa → "¿Cómo me llamas?"
- *   4. Input minimalista — Enter confirma nombre
- *   5. TTS habla: "Hola [nombre]. ¿Cuál va a ser la primera tarea del día?"
- *   6. Input se convierte en chat principal del Hub
- *   7. Nombre guardado en Flash Memory
+ * Flujo:
+ *   1. Pulso azul (1s)
+ *   2. Saturación gris→azul (3s)
+ *   3. Typewriter: "Hola."
+ *   4. Typewriter: "¿Cómo me llamas?"
+ *   5. Input nombre → Enter
+ *   6. TTS habla + typewriter respuesta
+ *   7. Input primera tarea → Enter → Hub
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
@@ -19,286 +18,242 @@ import { GridBackground } from '../hub/GridBackground'
 import { useSystemStore } from '../../stores/systemStore'
 import { useFirstTaskStore } from '../../stores/firstTaskStore'
 
-type OnboardingStep =
-  | 'pulse'          // Paso 1: pulso inicial
-  | 'saturate'       // Paso 2: transición de color
-  | 'greet_hola'     // Paso 3a: typewriter "Hola."
-  | 'greet_name'     // Paso 3b: typewriter "¿Cómo me llamas?"
-  | 'input_name'     // Paso 4: input de nombre
-  | 'tts_response'   // Paso 5: TTS + typewriter respuesta
-  | 'input_task'     // Paso 6: input de primera tarea
-  | 'done'           // Paso 7: listo
-
 export interface OnboardingScreenProps {
   onComplete: (nombre: string) => void
 }
 
-export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
-  const [step, setStep] = useState<OnboardingStep>('pulse')
-  const [saturation, setSaturation] = useState(0)
-  const [nombre, setNombre] = useState('')
-  const [inputValue, setInputValue] = useState('')
-  const [taskValue, setTaskValue] = useState('')
-  const [ttsText, setTtsText] = useState('')
-  const [pulsing, setPulsing] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const taskInputRef = useRef<HTMLInputElement>(null)
-  const satAnimRef = useRef<ReturnType<typeof setInterval> | null>(null)
+type Step = 'pulse' | 'saturate' | 'hola' | 'nombre_prompt' | 'nombre_input' | 'respuesta' | 'tarea_input'
 
-  const killSwitchRegistered = useSystemStore((s) => s.killSwitchRegistered)
+function hablar(texto: string) {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+  window.speechSynthesis.cancel()
+  const utt = new SpeechSynthesisUtterance(texto)
+  utt.lang = 'es-MX'
+  utt.rate = 0.92
+  utt.pitch = 1.05
+  window.speechSynthesis.speak(utt)
+}
+
+export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
+  const [step, setStep]         = useState<Step>('pulse')
+  const [saturation, setSat]    = useState(0)
+  const [nombre, setNombre]     = useState('')
+  const [inputVal, setInputVal] = useState('')
+  const [tareaVal, setTareaVal] = useState('')
+  const [respuesta, setRespuesta] = useState('')
+
+  const inputRef = useRef<HTMLInputElement>(null)
+  const tareaRef = useRef<HTMLInputElement>(null)
+
   const { iniciarPrimeraTarea } = useFirstTaskStore()
 
-  // Paso 1: pulso al montar
+  // ── Paso 1: pulso → 1s → saturate ─────────────────────────────
   useEffect(() => {
-    setPulsing(true)
-    const t = setTimeout(() => {
-      setPulsing(false)
-      setStep('saturate')
-    }, 1000)
+    if (step !== 'pulse') return
+    const t = setTimeout(() => setStep('saturate'), 1200)
     return () => clearTimeout(t)
-  }, [])
-
-  // Paso 2: saturación 0→1 en 4 segundos
-  useEffect(() => {
-    if (step !== 'saturate') return
-    const startTime = Date.now()
-    const duration = 4000
-    satAnimRef.current = setInterval(() => {
-      const elapsed = Date.now() - startTime
-      const progress = Math.min(elapsed / duration, 1)
-      setSaturation(progress)
-      if (progress >= 1) {
-        clearInterval(satAnimRef.current!)
-        setStep('greet_hola')
-      }
-    }, 16)
-    return () => { if (satAnimRef.current) clearInterval(satAnimRef.current) }
   }, [step])
 
-  // Paso 3b: después de "Hola." pausa 800ms → siguiente texto
-  const handleHolaComplete = useCallback(() => {
-    setTimeout(() => setStep('greet_name'), 800)
+  // ── Paso 2: saturación 0→1 en 3s → hola ──────────────────────
+  useEffect(() => {
+    if (step !== 'saturate') return
+    const start = Date.now()
+    const duration = 3000
+    const tick = setInterval(() => {
+      const p = Math.min((Date.now() - start) / duration, 1)
+      setSat(p)
+      if (p >= 1) { clearInterval(tick); setStep('hola') }
+    }, 16)
+    return () => clearInterval(tick)
+  }, [step])
+
+  // ── Paso 3: typewriter "Hola." → 800ms → nombre_prompt ────────
+  const onHolaComplete = useCallback(() => {
+    setTimeout(() => setStep('nombre_prompt'), 800)
   }, [])
 
-  // Paso 4: mostrar input al terminar "¿Cómo me llamas?"
-  const handleNamePromptComplete = useCallback(() => {
-    setStep('input_name')
-    setTimeout(() => inputRef.current?.focus(), 50)
+  // ── Paso 4: typewriter "¿Cómo me llamas?" → nombre_input ──────
+  const onNombrePromptComplete = useCallback(() => {
+    setStep('nombre_input')
+    setTimeout(() => inputRef.current?.focus(), 60)
   }, [])
 
-  // Paso 5: enviar nombre
-  const handleSubmitNombre = useCallback(async (e: React.FormEvent | React.KeyboardEvent) => {
+  // ── Paso 5: submit nombre ─────────────────────────────────────
+  const submitNombre = useCallback((e: React.FormEvent) => {
     e.preventDefault()
-    const trimmed = inputValue.trim()
-    if (!trimmed) return
-    setNombre(trimmed)
-    setStep('tts_response')
+    const n = inputVal.trim()
+    if (!n) return
+    setNombre(n)
+    const txt = `Hola ${n}. ¿Cuál va a ser la primera tarea del día?`
+    setRespuesta(txt)
+    setStep('respuesta')
+    // TTS: debe llamarse sincrónicamente desde el evento del usuario
+    hablar(txt)
+  }, [inputVal])
 
-    const respuestaTexto = `Hola ${trimmed}. ¿Cuál va a ser la primera tarea del día?`
-    setTtsText(respuestaTexto)
-
-    // Llamar TTS backend
-    try {
-      await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: respuestaTexto }),
-      })
-    } catch {
-      // TTS falla silenciosamente — la UI continúa
-    }
-
-    // Guardar en Flash Memory
-    try {
-      await fetch('/api/memory/flash', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tipo: 'user_profile',
-          contenido: { nombre: trimmed },
-          importancia: 1.0,
-        }),
-      })
-    } catch {
-      // Flash Memory falla silenciosamente
-    }
-  }, [inputValue])
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') handleSubmitNombre(e)
-  }, [handleSubmitNombre])
-
-  const handleTtsComplete = useCallback(() => {
+  // ── Paso 6: typewriter respuesta → tarea_input ────────────────
+  const onRespuestaComplete = useCallback(() => {
     setTimeout(() => {
-      setStep('input_task')
-      setTimeout(() => taskInputRef.current?.focus(), 50)
-    }, 500)
+      setStep('tarea_input')
+      setTimeout(() => tareaRef.current?.focus(), 60)
+    }, 400)
   }, [])
 
-  // Paso 7: enviar primera tarea
-  const handleSubmitTask = useCallback(async (e: React.FormEvent | React.KeyboardEvent) => {
+  // ── Paso 7: submit tarea → Hub ────────────────────────────────
+  const submitTarea = useCallback((e: React.FormEvent) => {
     e.preventDefault()
-    const trimmed = taskValue.trim()
-    if (!trimmed) return
-    iniciarPrimeraTarea(trimmed)
-    setTimeout(() => onComplete(nombre), 500)
-  }, [taskValue, nombre, iniciarPrimeraTarea, onComplete])
+    const t = tareaVal.trim()
+    if (!t) return
+    // Guardar tarea en store (sin timeouts que crasheen)
+    try { iniciarPrimeraTarea(t) } catch (_) { /* safe */ }
+    onComplete(nombre)
+  }, [tareaVal, nombre, iniciarPrimeraTarea, onComplete])
 
-  const handleTaskKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') handleSubmitTask(e)
-  }, [handleSubmitTask])
+  const pulsing = step === 'pulse'
+
+  // ── Indicador de progreso para saturate ──────────────────
+  const saturateMsg =
+    saturation < 0.33 ? 'Inicializando núcleo...' :
+    saturation < 0.66 ? 'Sincronizando redes...' :
+    saturation < 1.0  ? 'Cargando contexto...' : ''
 
   return (
     <div
       data-testid="onboarding-screen"
       data-step={step}
       style={{
-        position: 'fixed',
-        inset: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
+        position: 'fixed', inset: 0, zIndex: 1000,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
         backgroundColor: '#050A14',
-        zIndex: 1000,
+        fontFamily: 'Inter, system-ui, sans-serif',
       }}
     >
-      {/* Fondo de cuadrícula */}
       <GridBackground saturation={saturation} />
 
-      {/* Nodo central con pulso */}
-      <div
-        data-testid="central-node-pulse"
-        style={{
-          position: 'relative',
-          zIndex: 2,
-          width: 80,
-          height: 80,
-          borderRadius: '50%',
-          backgroundColor: '#4FC3F7',
-          boxShadow: pulsing
-            ? '0 0 60px 30px rgba(79, 195, 247, 0.6)'
-            : '0 0 20px 8px rgba(79, 195, 247, 0.3)',
-          transition: 'box-shadow 0.5s ease',
-          marginBottom: 48,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 28,
-        }}
-      >
-        ✦
-      </div>
+      {/* Nodo central */}
+      <div style={{
+        position: 'relative', zIndex: 2,
+        width: 80, height: 80, borderRadius: '50%',
+        backgroundColor: '#0D1B2A',
+        border: '2px solid #4FC3F7',
+        animation: pulsing ? 'pulse-glow 1.4s ease-in-out infinite' : undefined,
+        boxShadow: pulsing
+          ? undefined
+          : '0 0 24px 8px rgba(79,195,247,0.25)',
+        transition: 'box-shadow 0.6s ease',
+        marginBottom: 52,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 30,
+      }}>✦</div>
 
-      {/* Área de texto */}
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 2,
-          textAlign: 'center',
-          color: '#E0F7FA',
-          fontFamily: 'Inter, system-ui, sans-serif',
-          minHeight: 120,
-        }}
-      >
-        {(step === 'greet_hola') && (
-          <div style={{ fontSize: 32, fontWeight: 300, marginBottom: 8 }}>
-            <TypewriterText text="Hola." speed={80} onComplete={handleHolaComplete} />
+      {/* Texto durante saturate */}
+      {step === 'saturate' && (
+        <div style={{
+          position: 'relative', zIndex: 2,
+          color: '#4FC3F7', fontSize: 13,
+          fontFamily: 'monospace', letterSpacing: '0.12em',
+          marginTop: -36, marginBottom: 36,
+          opacity: 0.7,
+          animation: 'fade-in 0.4s ease',
+        }}>
+          {saturateMsg}
+        </div>
+      )}
+
+      {/* Texto principal */}
+      <div style={{
+        position: 'relative', zIndex: 2,
+        textAlign: 'center', color: '#E0F7FA',
+        minHeight: 140, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', gap: 16,
+      }}>
+
+        {/* "Hola." typewriter */}
+        {step === 'hola' && (
+          <div style={{ fontSize: 34, fontWeight: 300 }}>
+            <TypewriterText text="Hola." speed={80} onComplete={onHolaComplete} />
           </div>
         )}
 
-        {(step === 'greet_name' || step === 'input_name') && (
+        {/* "Hola." estático + "¿Cómo me llamas?" typewriter */}
+        {step === 'nombre_prompt' && (
           <>
-            <div style={{ fontSize: 32, fontWeight: 300, marginBottom: 16 }}>
-              Hola.
+            <div style={{ fontSize: 34, fontWeight: 300 }}>Hola.</div>
+            <div style={{ fontSize: 22, color: '#90CAF9' }}>
+              <TypewriterText text="¿Cómo me llamas?" speed={55} onComplete={onNombrePromptComplete} />
             </div>
-            {step === 'greet_name' && (
-              <div style={{ fontSize: 22, color: '#90CAF9' }}>
-                <TypewriterText
-                  text="¿Cómo me llamas?"
-                  speed={60}
-                  onComplete={handleNamePromptComplete}
-                />
-              </div>
-            )}
           </>
         )}
 
-        {step === 'input_name' && (
+        {/* Input nombre */}
+        {step === 'nombre_input' && (
           <>
-            <div style={{ fontSize: 32, fontWeight: 300, marginBottom: 16 }}>Hola.</div>
-            <div style={{ fontSize: 22, color: '#90CAF9', marginBottom: 32 }}>¿Cómo me llamas?</div>
-            <form onSubmit={handleSubmitNombre} style={{ display: 'flex', justifyContent: 'center' }}>
+            <div style={{ fontSize: 34, fontWeight: 300 }}>Hola.</div>
+            <div style={{ fontSize: 22, color: '#90CAF9', marginBottom: 8 }}>¿Cómo me llamas?</div>
+            <form onSubmit={submitNombre}>
               <input
                 ref={inputRef}
                 data-testid="name-input"
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder=""
+                value={inputVal}
+                onChange={e => setInputVal(e.target.value)}
                 autoFocus
                 style={{
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: '1px solid #4FC3F7',
-                  color: '#E0F7FA',
-                  fontSize: 24,
-                  textAlign: 'center',
-                  outline: 'none',
-                  width: 280,
-                  padding: '8px 0',
-                  fontFamily: 'inherit',
-                  caretColor: '#4FC3F7',
+                  background: 'transparent', border: 'none',
+                  borderBottom: '2px solid #4FC3F7',
+                  color: '#E0F7FA', fontSize: 26, textAlign: 'center',
+                  outline: 'none', width: 260, padding: '6px 0',
+                  caretColor: '#4FC3F7', fontFamily: 'inherit',
                 }}
               />
             </form>
           </>
         )}
 
-        {step === 'tts_response' && (
+        {/* TTS + typewriter respuesta */}
+        {step === 'respuesta' && (
           <div style={{ fontSize: 22, color: '#90CAF9', maxWidth: 480 }}>
-            <TypewriterText
-              text={ttsText}
-              speed={40}
-              onComplete={handleTtsComplete}
-            />
+            <TypewriterText text={respuesta} speed={38} onComplete={onRespuestaComplete} />
           </div>
         )}
 
-        {step === 'input_task' && (
+        {/* Input primera tarea */}
+        {step === 'tarea_input' && (
           <>
-            <div style={{ fontSize: 22, color: '#90CAF9', marginBottom: 32, maxWidth: 480 }}>
+            <div style={{ fontSize: 22, color: '#90CAF9', marginBottom: 8, maxWidth: 480 }}>
               Hola {nombre}. ¿Cuál va a ser la primera tarea del día?
             </div>
-            <form onSubmit={handleSubmitTask} style={{ display: 'flex', justifyContent: 'center' }}>
+            <form onSubmit={submitTarea}>
               <input
-                ref={taskInputRef}
+                ref={tareaRef}
                 data-testid="task-input"
-                type="text"
-                value={taskValue}
-                onChange={(e) => setTaskValue(e.target.value)}
-                onKeyDown={handleTaskKeyDown}
+                value={tareaVal}
+                onChange={e => setTareaVal(e.target.value)}
                 placeholder="Describe tu tarea..."
                 autoFocus
                 style={{
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: '1px solid #4FC3F7',
-                  color: '#E0F7FA',
-                  fontSize: 18,
-                  textAlign: 'center',
-                  outline: 'none',
-                  width: 380,
-                  padding: '8px 0',
-                  fontFamily: 'inherit',
-                  caretColor: '#4FC3F7',
-                }}
+                  background: 'transparent', border: 'none',
+                  borderBottom: '2px solid #4FC3F7',
+                  color: '#E0F7FA', fontSize: 20, textAlign: 'center',
+                  outline: 'none', width: 380, padding: '6px 0',
+                  caretColor: '#4FC3F7', fontFamily: 'inherit',
+                  '::placeholder': { color: '#445' },
+                } as React.CSSProperties}
               />
             </form>
           </>
         )}
       </div>
+
+      {/* Hint Enter */}
+      {(step === 'nombre_input' || step === 'tarea_input') && (
+        <div style={{
+          position: 'relative', zIndex: 2, marginTop: 24,
+          color: '#2a4a5a', fontSize: 12, fontFamily: 'monospace',
+        }}>
+          Presiona Enter para continuar
+        </div>
+      )}
     </div>
   )
 }

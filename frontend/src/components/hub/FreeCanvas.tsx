@@ -2,17 +2,14 @@
  * YeyoOS — FreeCanvas
  * Micro-fase 3.19 — Capa 3: Cuerpo
  *
- * Canvas PixiJS con pan/zoom y nodos libres.
+ * Canvas HTML/CSS puro con nodos arrastrables.
  * - Nodos flotan en posiciones libres (no órbita)
- * - Solo muestra nodos INSTALADOS
  * - Posiciones guardadas en localStorage por usuario
  * - Drag para mover nodos, doble-click para abrir
- * - Canvas draggable (pan) con mouse drag
- * - Zoom con scroll de ratón (0.3x — 3.0x)
+ * - Pan con mouse drag en fondo, zoom con scroll
  */
 
-import React, { useEffect, useRef, useCallback } from 'react'
-import * as PIXI from 'pixi.js'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useHubStore } from '../../stores/hubStore'
 import { GridBackground } from './GridBackground'
 
@@ -35,197 +32,191 @@ export interface FreeCanvasProps {
   style?: React.CSSProperties
 }
 
-const DEFAULT_COLORS: Record<string, number> = {
-  idle: 0x1565C0,
-  activo: 0x4FC3F7,
-  error: 0xF44336,
+const NODE_SIZE = 72
+
+const DEFAULT_COLORS: Record<string, string> = {
+  idle:   '#1565C0',
+  activo: '#4FC3F7',
+  error:  '#F44336',
 }
 
-const NODE_RADIUS = 36
+function defaultPositions(nodos: NodoLibreInfo[]): Record<string, { x: number; y: number }> {
+  const cx = 400, cy = 300, radius = 200
+  const out: Record<string, { x: number; y: number }> = {}
+  nodos.forEach((n, i) => {
+    const angle = (i / nodos.length) * Math.PI * 2 - Math.PI / 2
+    out[n.id] = { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius }
+  })
+  return out
+}
 
 export function FreeCanvas({
   nodos,
   userId,
   onNodoClick,
   onNodoDoubleClick,
-  width = 800,
-  height = 600,
   style,
 }: FreeCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const appRef = useRef<PIXI.Application | null>(null)
-  const worldRef = useRef<PIXI.Container | null>(null)
-  const nodeContainersRef = useRef<Map<string, PIXI.Container>>(new Map())
 
   const {
     posicionesNodos,
     setPosicionNodo,
     cargarPosicionesDesdeStorage,
     guardarPosicionesEnStorage,
-    nodosInstalados,
     pipelineActivo,
-    nodosEnPipeline,
   } = useHubStore()
+
+  // Pan & zoom state
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const panningRef = useRef(false)
+  const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
+
+  // Drag state per nodo
+  const dragRef = useRef<{
+    nodeId: string
+    startX: number; startY: number
+    origX: number; origY: number
+    moved: boolean
+  } | null>(null)
 
   useEffect(() => {
     cargarPosicionesDesdeStorage(userId)
-  }, [userId])
+  }, [userId, cargarPosicionesDesdeStorage])
 
+  // Guardar posiciones al desmontar
   useEffect(() => {
-    if (!containerRef.current) return
+    return () => { guardarPosicionesEnStorage(userId) }
+  }, [userId, guardarPosicionesEnStorage])
 
-    const app = new PIXI.Application()
-    appRef.current = app
+  // ── Pan (drag on background) ──────────────────────────
+  const onBgMouseDown = useCallback((e: React.MouseEvent) => {
+    // Solo si click en el fondo, no en un nodo
+    if ((e.target as HTMLElement).closest('[data-nodo-id]')) return
+    panningRef.current = true
+    panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
+  }, [pan])
 
-    app.init({
-      width,
-      height,
-      backgroundColor: 0x050A14,
-      antialias: true,
-      resolution: window.devicePixelRatio || 1,
-    }).then(() => {
-      if (!containerRef.current) return
-      containerRef.current.appendChild(app.canvas as HTMLCanvasElement)
-
-      // World container — se mueve con pan/zoom
-      const world = new PIXI.Container()
-      worldRef.current = world
-      app.stage.addChild(world)
-
-      // Estado de pan
-      let isPanning = false
-      let panStart = { x: 0, y: 0 }
-      let worldStart = { x: 0, y: 0 }
-
-      app.canvas.addEventListener('mousedown', (e: MouseEvent) => {
-        isPanning = true
-        panStart = { x: e.clientX, y: e.clientY }
-        worldStart = { x: world.x, y: world.y }
-      })
-
-      app.canvas.addEventListener('mousemove', (e: MouseEvent) => {
-        if (!isPanning) return
-        world.x = worldStart.x + (e.clientX - panStart.x)
-        world.y = worldStart.y + (e.clientY - panStart.y)
-      })
-
-      app.canvas.addEventListener('mouseup', () => { isPanning = false })
-      app.canvas.addEventListener('mouseleave', () => { isPanning = false })
-
-      // Zoom con scroll
-      app.canvas.addEventListener('wheel', (e: WheelEvent) => {
-        e.preventDefault()
-        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1
-        const newScale = Math.max(0.3, Math.min(3.0, world.scale.x * zoomFactor))
-        world.scale.set(newScale)
-      })
-
-      renderNodos()
-    })
-
-    return () => {
-      guardarPosicionesEnStorage(userId)
-      app.destroy(true, { children: true })
-      appRef.current = null
-    }
-  }, [width, height])
-
-  const renderNodos = useCallback(() => {
-    const world = worldRef.current
-    if (!world) return
-
-    world.removeChildren()
-    nodeContainersRef.current.clear()
-
-    nodos.filter(n => nodosInstalados.includes(n.id) || nodos.length <= 1).forEach((nodo, i) => {
-      const pos = posicionesNodos[nodo.id] ?? {
-        x: 150 + (i % 4) * 180,
-        y: 150 + Math.floor(i / 4) * 180,
+  const onMouseMove = useCallback((e: React.MouseEvent) => {
+    // ── Drag nodo ──
+    if (dragRef.current) {
+      const d = dragRef.current
+      const dx = (e.clientX - d.startX) / zoom
+      const dy = (e.clientY - d.startY) / zoom
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) d.moved = true
+      if (d.moved) {
+        setPosicionNodo(d.nodeId, d.origX + dx, d.origY + dy)
       }
+      return
+    }
+    // ── Pan background ──
+    if (panningRef.current) {
+      const s = panStartRef.current
+      setPan({ x: s.panX + (e.clientX - s.x), y: s.panY + (e.clientY - s.y) })
+    }
+  }, [zoom, setPosicionNodo])
 
-      const container = new PIXI.Container()
-      container.x = pos.x
-      container.y = pos.y
-      container.eventMode = 'static'
-      container.cursor = 'pointer'
+  const onMouseUp = useCallback(() => {
+    if (dragRef.current) {
+      const d = dragRef.current
+      if (!d.moved) {
+        onNodoClick?.(d.nodeId)
+      }
+      guardarPosicionesEnStorage(userId)
+      dragRef.current = null
+      return
+    }
+    panningRef.current = false
+  }, [userId, onNodoClick, guardarPosicionesEnStorage])
 
-      // Círculo base
-      const circle = new PIXI.Graphics()
-      const estado = nodo.estado ?? 'idle'
-      const color = DEFAULT_COLORS[estado]
-      circle.circle(0, 0, NODE_RADIUS)
-      circle.fill({ color, alpha: estado === 'activo' ? 0.9 : 0.7 })
-      circle.stroke({ width: 2, color: estado === 'activo' ? 0x4FC3F7 : 0x1E3A5F })
-      container.addChild(circle)
+  // ── Zoom ──────────────────────────────────────────────
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    e.stopPropagation()
+    const factor = e.deltaY > 0 ? 0.92 : 1.08
+    setZoom(z => Math.max(0.3, Math.min(3, z * factor)))
+  }, [])
 
-      // Etiqueta
-      const label = new PIXI.Text({
-        text: nodo.label,
-        style: new PIXI.TextStyle({ fill: 0xE0F7FA, fontSize: 11, fontFamily: 'Inter, sans-serif' }),
-      })
-      label.anchor.set(0.5, 0)
-      label.y = NODE_RADIUS + 6
-      container.addChild(label)
-
-      // Drag behavior
-      let dragStart: { x: number; y: number } | null = null
-      let containerStart: { x: number; y: number } | null = null
-      let isDragging = false
-
-      container.on('pointerdown', (e: PIXI.FederatedPointerEvent) => {
-        dragStart = { x: e.globalX, y: e.globalY }
-        containerStart = { x: container.x, y: container.y }
-        isDragging = false
-      })
-
-      container.on('pointermove', (e: PIXI.FederatedPointerEvent) => {
-        if (!dragStart || !containerStart) return
-        const dx = e.globalX - dragStart.x
-        const dy = e.globalY - dragStart.y
-        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-          isDragging = true
-          container.x = containerStart.x + dx
-          container.y = containerStart.y + dy
-        }
-      })
-
-      container.on('pointerup', () => {
-        if (isDragging) {
-          setPosicionNodo(nodo.id, container.x, container.y)
-          guardarPosicionesEnStorage(userId)
-        } else {
-          onNodoClick?.(nodo.id)
-        }
-        dragStart = null
-        containerStart = null
-      })
-
-      container.on('pointerdblclick', () => {
-        onNodoDoubleClick?.(nodo.id)
-      })
-
-      world.addChild(container)
-      nodeContainersRef.current.set(nodo.id, container)
-    })
-  }, [nodos, nodosInstalados, posicionesNodos])
-
-  useEffect(() => {
-    renderNodos()
-  }, [nodos, posicionesNodos, nodosInstalados])
+  // Posiciones: merge defaults con las guardadas
+  const defaults = defaultPositions(nodos)
+  const getPos = (id: string) => posicionesNodos[id] ?? defaults[id] ?? { x: 200, y: 200 }
 
   return (
     <div
       ref={containerRef}
       data-testid="free-canvas"
       data-pipeline-activo={pipelineActivo}
+      onMouseDown={onBgMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
+      onWheel={onWheel}
       style={{
         position: 'relative',
-        width,
-        height,
+        width: '100%', height: '100%',
         overflow: 'hidden',
-        cursor: 'grab',
+        cursor: panningRef.current ? 'grabbing' : 'grab',
         ...style,
       }}
-    />
+    >
+      {/* Grid background */}
+      <GridBackground saturation={1} />
+
+      {/* World layer — transformed by pan/zoom */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+        transformOrigin: '0 0',
+      }}>
+        {nodos.map(nodo => {
+          const pos = getPos(nodo.id)
+          const estado = nodo.estado ?? 'idle'
+          const color = nodo.colorAcento ?? DEFAULT_COLORS[estado]
+
+          return (
+            <div
+              key={nodo.id}
+              data-nodo-id={nodo.id}
+              onMouseDown={(e) => {
+                e.stopPropagation()
+                dragRef.current = {
+                  nodeId: nodo.id,
+                  startX: e.clientX, startY: e.clientY,
+                  origX: pos.x, origY: pos.y,
+                  moved: false,
+                }
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                onNodoDoubleClick?.(nodo.id)
+              }}
+              style={{
+                position: 'absolute',
+                left: pos.x - NODE_SIZE / 2,
+                top: pos.y - NODE_SIZE / 2,
+                width: NODE_SIZE, height: NODE_SIZE,
+                borderRadius: '50%',
+                background: `radial-gradient(circle at 35% 35%, ${color}cc, ${color}66)`,
+                border: `2px solid ${color}`,
+                boxShadow: `0 0 20px ${color}44, 0 0 40px ${color}22`,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+                userSelect: 'none',
+                transition: dragRef.current?.nodeId === nodo.id ? 'none' : 'box-shadow 0.3s ease',
+              }}
+            >
+              <span style={{ fontSize: 24, lineHeight: 1 }}>{nodo.icono ?? '●'}</span>
+              <span style={{
+                position: 'absolute', bottom: -20,
+                fontSize: 11, color: '#C0D8E8',
+                whiteSpace: 'nowrap', fontFamily: 'Inter, system-ui, sans-serif',
+                textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+              }}>{nodo.label}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }

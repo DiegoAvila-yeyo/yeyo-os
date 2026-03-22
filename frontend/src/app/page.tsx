@@ -1,246 +1,215 @@
 /**
- * YeyoOS — Neural Hub Page (Demo)
- * Capa 3: Cuerpo
+ * YeyoOS — Main Page
+ * Capa 3: Cuerpo — Integración completa
+ *
+ * Flujo:
+ *   1. Si onboarding pendiente → OnboardingScreen
+ *   2. Si onboarding completo → Hub principal (Topbar + Sidebar + FreeCanvas + Workspace)
  */
 'use client';
 
-import { useEffect, useState } from 'react';
-import AppLayout from '@/components/layout/AppLayout';
-import { GraphExecutionView } from '@/components/hub/GraphExecutionView';
-import { useGraphStore } from '@/stores/graphStore';
-import ChatPanel from '@/components/chat/ChatPanel';
-import MiniChat from '@/components/chat/MiniChat';
-import Notifications from '@/components/common/Notifications';
-import { useUIStore } from '@/lib/store/ui-store';
-import { useNotificationStore } from '@/lib/store/notification-store';
-import { initKillSwitch, useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useSystemStore } from '@/stores/systemStore';
+import { useHubStore } from '@/stores/hubStore';
+import { initKillSwitch } from '@/hooks/useKeyboardShortcuts';
 
-const NODES = [
-  { id: 'chat',   label: 'Chat',    icon: '\u{1F4AC}', color: '#1e90ff' },
-  { id: 'memory', label: 'Memoria', icon: '\u{1F9E0}', color: '#9b59b6' },
-  { id: 'files',  label: 'Archivos',icon: '\u{1F4C1}', color: '#2ecc71' },
-  { id: 'code',   label: 'Codigo',  icon: '\u{1F4BB}', color: '#ffa500' },
-  { id: 'vision', label: 'Vision',  icon: '\u{1F441}', color: '#ff4444' },
+// Onboarding
+import { OnboardingScreen } from '@/components/onboarding/OnboardingScreen';
+
+// Layout
+import { Topbar, TabInfo } from '@/components/layout/Topbar';
+import { HubSidebar, NodoMiniInfo } from '@/components/layout/HubSidebar';
+
+// Hub
+import { FreeCanvas, NodoLibreInfo } from '@/components/hub/FreeCanvas';
+import { KillSwitchOverlay } from '@/components/security/KillSwitchOverlay';
+
+// Node workspaces
+import { ImageNodeLayout } from '@/components/nodes/ImageNodeLayout';
+import { VideoNodeLayout } from '@/components/nodes/VideoNodeLayout';
+import { CodeNodeLayout } from '@/components/nodes/CodeNodeLayout';
+import { AutomationNodeLayout } from '@/components/nodes/AutomationNodeLayout';
+
+// ─── Nodos disponibles en el Hub ───────────────────────────────────────────────
+const NODOS_HUB: NodoLibreInfo[] = [
+  { id: 'imagen',    label: 'Imagen',     tipo: 'image',      icono: '🖼️',  colorAcento: '#1e90ff' },
+  { id: 'video',     label: 'Video',      tipo: 'video',      icono: '🎬',  colorAcento: '#9b59b6' },
+  { id: 'codigo',    label: 'Código',     tipo: 'code',       icono: '💻',  colorAcento: '#2ecc71' },
+  { id: 'automacion',label: 'Automatizar',tipo: 'automation', icono: '⚡',  colorAcento: '#ffa500' },
+  { id: 'chat',      label: 'Chat',       tipo: 'chat',       icono: '💬',  colorAcento: '#ff4444' },
+  { id: 'memoria',   label: 'Memoria',    tipo: 'memory',     icono: '🧠',  colorAcento: '#00bcd4' },
 ];
 
-function SatelliteNodeUI({ node, index, total, onClick }: {
-  node: typeof NODES[0]; index: number; total: number; onClick?: () => void;
-}) {
-  const angle = (index / total) * Math.PI * 2 - Math.PI / 2;
-  // Radio responsive: 22vmin se adapta a cualquier resolución
-  const rVmin = 22;
-  const cx = Math.cos(angle) * rVmin;
-  const cy = Math.sin(angle) * rVmin;
-  return (
-    <div
-      className="absolute z-10 cursor-pointer group"
+type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | null;
+
+// ─── Workspace Router ──────────────────────────────────────────────────────────
+function WorkspaceRouter({ nodeId, onClose }: { nodeId: WorkspaceId; onClose: () => void }) {
+  if (!nodeId) return null;
+
+  const closeButton = (
+    <button
+      onClick={onClose}
       style={{
-        left: `calc(50% + ${cx}vmin)`,
-        top: `calc(50% + ${cy}vmin)`,
-        transform: 'translate(-50%, -50%)',
+        position: 'absolute', top: 8, right: 8, zIndex: 10,
+        background: '#1a1a2e', border: '1px solid #333', color: '#888',
+        borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontFamily: 'monospace', fontSize: 12,
       }}
-      onClick={onClick}
-    >
-      <div
-        className="rounded-xl flex flex-col items-center justify-center transition-all duration-200 group-hover:scale-110"
-        style={{
-          width: 'clamp(44px, 6vmin, 64px)',
-          height: 'clamp(44px, 6vmin, 64px)',
-          background: `${node.color}20`,
-          border: `1px solid ${node.color}60`,
-          boxShadow: `0 0 15px ${node.color}30`,
-        }}
-      >
-        <span style={{ fontSize: 'clamp(14px, 2.5vmin, 22px)' }}>{node.icon}</span>
-        <span className="mt-0.5 font-mono" style={{ color: node.color, fontSize: 'clamp(8px, 1.2vmin, 12px)' }}>
-          {node.label}
-        </span>
-      </div>
+    >✕ Cerrar</button>
+  );
+
+  const wrapper = (children: React.ReactNode) => (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {closeButton}
+      {children}
     </div>
   );
+
+  switch (nodeId) {
+    case 'imagen':     return wrapper(<ImageNodeLayout />);
+    case 'video':      return wrapper(<VideoNodeLayout />);
+    case 'codigo':     return wrapper(<CodeNodeLayout />);
+    case 'automacion': return wrapper(<AutomationNodeLayout />);
+    default:           return null;
+  }
 }
 
-// ─── Demo: simula eventos de grafo para mostrar GraphExecutionView ───────────
-function GraphDemo() {
-  const { procesarEvento, limpiarTodo } = useGraphStore();
-  const [corriendo, setCorriendo] = useState(false);
+// ─── Hub Principal ─────────────────────────────────────────────────────────────
+function HubPrincipal() {
+  const userName = useSystemStore((s) => s.userName);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(null);
+  const [tabs, setTabs] = useState<TabInfo[]>([]);
 
-  const simularGrafo = () => {
-    if (corriendo) return;
-    setCorriendo(true);
-    limpiarTodo();
-
-    const nodos = [
-      { id: 'generar_guion', msg: 'Generando guión...' },
-      { id: 'crear_imagenes', msg: 'Creando imágenes...' },
-      { id: 'componer_video', msg: 'Componiendo video...' },
-    ];
-    const grafoId = 'demo_reel';
-    let delay = 0;
-
-    // Inicializar todos como pendiente
-    nodos.forEach((n, i) => {
-      setTimeout(() => {
-        procesarEvento({ type: 'graph_event', grafo_id: grafoId, nodo_id: n.id,
-          estado: 'pendiente', progreso: 0, mensaje: 'En espera', timestamp: new Date().toISOString(),
-          nodos_totales: 3, conexiones: [{ desde: 'generar_guion', hasta: 'crear_imagenes' }, { desde: 'crear_imagenes', hasta: 'componer_video' }] });
-      }, i * 50);
-    });
-
-    // Ejecutar nodos en secuencia
-    nodos.forEach((n, i) => {
-      delay += 800;
-      setTimeout(() => {
-        procesarEvento({ type: 'graph_event', grafo_id: grafoId, nodo_id: n.id,
-          estado: 'activo', progreso: i / 3, mensaje: n.msg, timestamp: new Date().toISOString(), nodos_totales: 3 });
-      }, delay);
-      delay += 1500;
-      setTimeout(() => {
-        procesarEvento({ type: 'graph_event', grafo_id: grafoId, nodo_id: n.id,
-          estado: 'completado', progreso: (i + 1) / 3, mensaje: '✓ Listo', timestamp: new Date().toISOString(), nodos_totales: 3 });
-      }, delay);
-    });
-
-    setTimeout(() => setCorriendo(false), delay + 500);
+  const WORKSPACE_LABELS: Record<string, { label: string; icono: string }> = {
+    imagen:     { label: 'Imagen',      icono: '🖼️' },
+    video:      { label: 'Video',       icono: '🎬' },
+    codigo:     { label: 'Código',      icono: '💻' },
+    automacion: { label: 'Automatizar', icono: '⚡' },
   };
 
-  return (
-    <div className="absolute bottom-2 left-2 z-20 flex flex-col gap-2"
-      style={{ maxWidth: 'min(340px, calc(100vw - 16px))' }}>
-      <GraphExecutionView grafoId="demo_reel" style={{ width: '100%' }} />
-      <button
-        onClick={simularGrafo}
-        disabled={corriendo}
-        className="px-3 py-1.5 rounded font-mono text-xs transition-all"
-        style={{
-          background: corriendo ? '#1a2a1a' : '#0d2a0d',
-          border: `1px solid ${corriendo ? '#2a4a2a' : '#4CAF50'}`,
-          color: corriendo ? '#4a7a4a' : '#4CAF50',
-          cursor: corriendo ? 'not-allowed' : 'pointer',
-        }}
-      >
-        {corriendo ? '⏳ Ejecutando grafo...' : '▶ Simular pipeline (Script → Imagen → Video)'}
-      </button>
-    </div>
-  );
-}
+  const abrirNodo = useCallback((nodeId: string) => {
+    if (!['imagen', 'video', 'codigo', 'automacion'].includes(nodeId)) return;
+    const ws = nodeId as WorkspaceId;
+    setActiveWorkspace(ws);
+    const info = WORKSPACE_LABELS[nodeId];
+    setTabs(prev => {
+      const exists = prev.find(t => t.id === nodeId);
+      if (exists) return prev.map(t => ({ ...t, activo: t.id === nodeId }));
+      return [
+        ...prev.map(t => ({ ...t, activo: false })),
+        { id: nodeId, label: info.label, icono: info.icono, activo: true },
+      ];
+    });
+  }, []);
 
-function NeuralHubDemo() {
-  const { setActivePanel } = useUIStore();
+  const cerrarTab = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const remaining = prev.filter(t => t.id !== tabId);
+      if (activeWorkspace === tabId) {
+        const last = remaining[remaining.length - 1];
+        setActiveWorkspace(last ? last.id as WorkspaceId : null);
+        return remaining.map((t, i) => ({ ...t, activo: i === remaining.length - 1 }));
+      }
+      return remaining;
+    });
+  }, [activeWorkspace]);
+
+  const clickTab = useCallback((tabId: string) => {
+    setActiveWorkspace(tabId as WorkspaceId);
+    setTabs(prev => prev.map(t => ({ ...t, activo: t.id === tabId })));
+  }, []);
+
+  const nodosMini: NodoMiniInfo[] = NODOS_HUB.map(n => ({
+    id: n.id, label: n.label, icono: n.icono, estado: 'idle',
+  }));
+
   return (
-    <div
-      className="w-full h-full relative overflow-hidden flex items-center justify-center select-none"
-      style={{ background: 'radial-gradient(ellipse at center, #0d0d20 0%, #0a0a0f 70%)' }}
-    >
-      {/* Grid */}
-      <div
-        className="absolute inset-0 opacity-5"
-        style={{
-          backgroundImage: 'linear-gradient(#1e90ff 1px, transparent 1px), linear-gradient(90deg, #1e90ff 1px, transparent 1px)',
-          backgroundSize: '40px 40px',
-        }}
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: '#0a0a0f', overflow: 'hidden' }}>
+      {/* TOPBAR */}
+      <Topbar
+        tabs={tabs}
+        onTabClick={clickTab}
+        onTabClose={cerrarTab}
+        onToggleSidebar={() => setSidebarOpen(o => !o)}
+        sidebarOpen={sidebarOpen}
       />
 
-      {/* Anillos */}
-      {[180, 270].map((r, i) => (
-        <div
-          key={i}
-          className="absolute rounded-full border border-blue-500/10"
-          style={{ width: r * 2, height: r * 2, left: `calc(50% - ${r}px)`, top: `calc(50% - ${r}px)` }}
+      {/* BODY */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* SIDEBAR */}
+        <HubSidebar
+          open={sidebarOpen}
+          nodos={nodosMini}
+          onNodoClick={abrirNodo}
         />
-      ))}
 
-      {/* Nodo central */}
-      <div className="absolute z-10" style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
-        <div className="relative flex items-center justify-center">
-          <div className="absolute w-32 h-32 rounded-full bg-blue-500/10 animate-ping" style={{ animationDuration: '3s' }} />
-          <div className="absolute w-24 h-24 rounded-full bg-blue-500/15 animate-pulse" />
-          <div
-            className="w-20 h-20 rounded-full flex flex-col items-center justify-center z-10"
-            style={{
-              width: 'clamp(60px, 9vmin, 90px)',
-              height: 'clamp(60px, 9vmin, 90px)',
-              background: 'radial-gradient(circle, #1e90ff30 0%, #0a0a0f 70%)',
-              border: '2px solid #1e90ff50',
-              boxShadow: '0 0 40px #1e90ff30, 0 0 80px #1e90ff10',
-            }}
-          >
-            <span style={{ fontSize: 'clamp(20px, 4vmin, 32px)' }}>⚡</span>
-            <span className="text-blue-300 font-mono mt-1" style={{ fontSize: 'clamp(8px, 1.2vmin, 12px)' }}>YeyoOS</span>
-          </div>
+        {/* WORKSPACE o CANVAS */}
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          {activeWorkspace ? (
+            <WorkspaceRouter
+              nodeId={activeWorkspace}
+              onClose={() => activeWorkspace && cerrarTab(activeWorkspace)}
+            />
+          ) : (
+            /* HUB libre — FreeCanvas con pan/zoom */
+            <FreeCanvas
+              nodos={NODOS_HUB}
+              userId={userName ?? 'yeyo'}
+              onNodoDoubleClick={abrirNodo}
+              style={{ width: '100%', height: '100%' }}
+            />
+          )}
         </div>
       </div>
 
-      {/* Nodos satelite */}
-      {NODES.map((node, i) => (
-        <SatelliteNodeUI
-          key={node.id}
-          node={node}
-          index={i}
-          total={NODES.length}
-          onClick={node.id === 'chat' ? () => setActivePanel('chat') : undefined}
-        />
-      ))}
-
-      {/* Demo GraphExecutionView */}
-      <GraphDemo />
-
-      {/* Shortcuts hint */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 font-mono" style={{ color: '#333355', fontSize: '11px' }}>
-        <span>Ctrl+Space = MiniChat</span>
-        <span>·</span>
-        <span>Ctrl+J = Chat</span>
-        <span>·</span>
-        <span>Ctrl+Alt+K = Kill Switch</span>
-      </div>
-
-      {/* Badge backend */}
-      <div
-        className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full font-mono"
-        style={{ background: '#ff444415', border: '1px solid #ff444430', color: '#ff6b6b', fontSize: '11px' }}
-      >
-        <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-        Backend offline — Capa 4 pendiente
-      </div>
+      {/* KILL SWITCH OVERLAY (siempre montado, activa con Ctrl+Alt+K) */}
+      <KillSwitchOverlay />
     </div>
   );
 }
 
-export default function NeuralHubPage() {
-  const { toggleMiniChat, setActivePanel, closeActivePanel, activePanel } = useUIStore();
-  const { addNotification } = useNotificationStore();
+// ─── Entry Point ───────────────────────────────────────────────────────────────
+export default function YeyoOSPage() {
+  const setOnboardingComplete = useSystemStore((s) => s.setOnboardingComplete);
+  const setUserName = useSystemStore((s) => s.setUserName);
 
+  // Leer localStorage SINCRÓNICAMENTE en el primer render
+  // para evitar el flash onboarding → hub
+  const [clientReady, setClientReady] = useState(false);
+  const [skipOnboarding, setSkipOnboarding] = useState(false);
+
+  useEffect(() => {
+    const done = localStorage.getItem('yeyo_onboarding_complete') === '1';
+    const savedName = localStorage.getItem('yeyo_user_name');
+    if (done && savedName) {
+      setUserName(savedName);
+      setOnboardingComplete(true);
+      setSkipOnboarding(true);
+    }
+    setClientReady(true);
+  }, [setOnboardingComplete, setUserName]);
+
+  // Registrar Kill Switch global al inicio
   useEffect(() => {
     const cleanup = initKillSwitch();
     return cleanup;
   }, []);
 
-  useKeyboardShortcuts([
-    { id: 'toggle-mini-chat', keys: 'ctrl+ ', handler: toggleMiniChat, description: 'Toggle MiniChat' },
-    { id: 'open-chat', keys: 'ctrl+j', handler: () => setActivePanel('chat'), description: 'Abrir Chat' },
-    { id: 'escape', keys: 'escape', handler: closeActivePanel, description: 'Cerrar panel' },
-  ]);
+  // Mientras detectamos si ya hizo onboarding, no renderizar nada
+  if (!clientReady) return null;
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      addNotification('success', 'YeyoOS Neural Hub cargado', true);
-      setTimeout(() => addNotification('info', 'Click en el nodo Chat o Ctrl+J para abrir el chat', true), 2500);
-    }, 1000);
-    return () => clearTimeout(t);
-  }, []);
+  if (skipOnboarding) return <HubPrincipal />;
 
   return (
-    <AppLayout
-      canvas={<NeuralHubDemo />}
-      chatPanel={
-        activePanel === 'chat' ? (
-          <div className="fixed right-0 top-0 h-full z-50">
-            <ChatPanel />
-          </div>
-        ) : null
-      }
-      miniChat={<MiniChat initialX={20} initialY={80} />}
-      notifications={<Notifications />}
+    <OnboardingScreen
+      onComplete={(nombre) => {
+        console.log('[YeyoOS] onboarding complete for:', nombre);
+        localStorage.setItem('yeyo_onboarding_complete', '1');
+        localStorage.setItem('yeyo_user_name', nombre);
+        setUserName(nombre);
+        setOnboardingComplete(true);
+        setSkipOnboarding(true);
+      }}
     />
   );
 }

@@ -18,7 +18,6 @@ import logging
 from typing import AsyncIterator, Optional
 
 from src.ia.interfaces import IAProvider, IAMessage, IAResponse
-from src.ia.embeddings import EmbeddingService
 from src.memory.flash_memory import FlashMemory
 from src.memory.models import Memory
 
@@ -69,7 +68,7 @@ class ContextualChatService:
         self,
         ia: IAProvider,
         memory: FlashMemory,
-        embeddings: EmbeddingService,
+        embeddings,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     ):
         self.ia = ia

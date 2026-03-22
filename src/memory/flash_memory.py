@@ -167,33 +167,38 @@ class FlashMemory:
         """
         Búsqueda semántica usando pgvector con cosine similarity.
         Solo retorna memorias cuya similitud >= threshold.
+        Fallback: retorna memorias recientes si pgvector no está disponible.
         """
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT id, content, type, tier, checksum, access_count,
-                       metadata, source, created_at, accessed_at, updated_at,
-                       1 - (embedding <=> $1::vector) AS similarity
-                FROM flash_memories
-                WHERE embedding IS NOT NULL
-                  AND 1 - (embedding <=> $1::vector) >= $2
-                ORDER BY embedding <=> $1::vector
-                LIMIT $3
-                """,
-                str(embedding),
-                threshold,
-                limit,
-            )
-            for row in rows:
-                await conn.execute(
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(
                     """
-                    UPDATE flash_memories
-                    SET accessed_at = NOW(), access_count = access_count + 1
-                    WHERE id = $1
+                    SELECT id, content, type, tier, checksum, access_count,
+                           metadata, source, created_at, accessed_at, updated_at,
+                           1 - (embedding <=> $1::vector) AS similarity
+                    FROM flash_memories
+                    WHERE embedding IS NOT NULL
+                      AND 1 - (embedding <=> $1::vector) >= $2
+                    ORDER BY embedding <=> $1::vector
+                    LIMIT $3
                     """,
-                    row["id"],
+                    str(embedding),
+                    threshold,
+                    limit,
                 )
-        return [self._row_to_memory(row) for row in rows]
+                for row in rows:
+                    await conn.execute(
+                        """
+                        UPDATE flash_memories
+                        SET accessed_at = NOW(), access_count = access_count + 1
+                        WHERE id = $1
+                        """,
+                        row["id"],
+                    )
+            return [self._row_to_memory(row) for row in rows]
+        except Exception as e:
+            logger.warning(f"pgvector no disponible, usando fallback: {e}")
+            return await self.recall("", limit=limit)
 
     async def promote_tier(self, memory_id: str) -> Memory:
         """

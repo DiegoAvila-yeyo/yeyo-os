@@ -46,7 +46,7 @@ class OllamaProvider(IAProvider):
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {"temperature": temperature},
+            "options": {"temperature": temperature, "num_predict": 512},
         }
         if system:
             payload["system"] = system
@@ -85,7 +85,7 @@ class OllamaProvider(IAProvider):
                 "model": self.model,
                 "messages": formatted_messages,
                 "stream": False,
-                "options": {"temperature": temperature},
+                "options": {"temperature": temperature, "num_predict": 512},
             },
         )
         response.raise_for_status()
@@ -118,7 +118,7 @@ class OllamaProvider(IAProvider):
                 "model": self.model,
                 "messages": formatted_messages,
                 "stream": True,
-                "options": {"temperature": temperature},
+                "options": {"temperature": temperature, "num_predict": 512},
             },
         ) as response:
             response.raise_for_status()

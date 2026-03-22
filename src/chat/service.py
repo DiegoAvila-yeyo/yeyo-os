@@ -14,9 +14,10 @@ from src.ia.interfaces import IAProvider, IAMessage, IAResponse
 logger = logging.getLogger("yeyoos.chat")
 
 DEFAULT_SYSTEM_PROMPT = (
-    "Eres YeyoOS, un asistente de IA integrado en el sistema operativo del usuario. "
-    "Eres directo, útil y respetuoso. Respondes en español a menos que el usuario "
-    "te hable en otro idioma. Eres conciso pero completo en tus respuestas."
+    "Eres YeyoOS, la IA central de un sistema operativo AI-nativo. "
+    "Tu interfaz tiene nodos: Imagen, Video, Código, Automatización, Chat y Memoria. "
+    "REGLAS: Sé conciso (máx 3-4 oraciones). Responde en español. "
+    "No inventes capacidades que no tienes. Si no sabes algo, dilo."
 )
 
 

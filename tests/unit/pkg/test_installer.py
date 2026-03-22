@@ -25,6 +25,9 @@ container:
   image: {pkg_name}:{version}
   network: none
 privilege_level: L2
+permissions:
+  - memory.read
+  - gpu.inference
 """
     (build_dir / "manifest.yml").write_text(manifest_content)
     (build_dir / "ui").mkdir()

@@ -236,7 +236,9 @@ class YeyoGrafo:
                         await asyncio.sleep(0.1 * (intento + 1))
                 except Exception as e:
                     estado.registrar_error(nodo_actual_id, f"Error inesperado: {e}", e)
-                    break
+                    if intento < nodo.max_intentos - 1:
+                        await asyncio.sleep(0.1 * (intento + 1))
+                    # Continuar al siguiente intento (no break)
 
             nodos_ejecutados += 1
             progreso = nodos_ejecutados / max(nodos_totales, 1)

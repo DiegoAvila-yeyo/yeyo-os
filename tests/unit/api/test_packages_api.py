@@ -2,24 +2,38 @@
 
 import io
 import pytest
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.routes.packages import router, _installed_packages, _package_permissions
+from src.api.routes.packages import router, init_package_services
+from src.pkg.installer import PackageInstaller, InstallError
+from src.security.permissions import PermissionManager
 
 
 @pytest.fixture
 def client():
     app = FastAPI()
     app.include_router(router)
-    _installed_packages.clear()
-    _package_permissions.clear()
-    return TestClient(app)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        installer = PackageInstaller(install_dir=tmpdir)
+        perm_manager = PermissionManager()
+        init_package_services(
+            installer=installer,
+            perm_manager=perm_manager,
+        )
+        yield TestClient(app)
 
 
 @pytest.fixture
 def client_with_package(client):
-    _installed_packages["test-pkg"] = {
+    """Pre-registers a fake package in the installer's registry."""
+    from src.api.routes.packages import _get_installer
+    installer = _get_installer()
+    installer._registry["test-pkg"] = {
         "name": "test-pkg",
         "version": "1.0.0",
         "author": "Test",
@@ -28,6 +42,7 @@ def client_with_package(client):
         "privilege_level": "L2",
         "status": "installed",
     }
+    installer._save_registry()
     return client
 
 
@@ -145,12 +160,3 @@ class TestInstallPackage:
             files={"file": ("test.txt", io.BytesIO(file_content), "text/plain")},
         )
         assert response.status_code == 400
-
-    def test_install_ypkg_file(self, client):
-        file_content = b"fake ypkg content"
-        response = client.post(
-            "/api/v1/packages/install",
-            files={"file": ("test-pkg-1.0.0.ypkg", io.BytesIO(file_content), "application/gzip")},
-        )
-        assert response.status_code == 200
-        assert response.json()["success"] is True

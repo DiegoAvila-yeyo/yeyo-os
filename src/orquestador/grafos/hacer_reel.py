@@ -15,6 +15,11 @@ from ..edge import FIN_GRAFO
 from ..catalogo import CatalogoNodos
 
 
+def _rama_imagenes_mapped(estado: EstadoGrafo) -> str:
+    """Maps rama result to actual node IDs."""
+    return "generar_imagenes_x5" if estado.salida.get("num_escenas", 0) > 5 else "generar_imagenes_x3"
+
+
 def _crear_mock_imagen(idx: int):
     """Nodo imagen mock para usar cuando hub.imagen.generar no está disponible."""
     async def fn(estado: EstadoGrafo) -> EstadoGrafo:
@@ -128,8 +133,3 @@ def crear_grafo_hacer_reel(
         .fin("nodo_guardar_memoria")
     )
     return grafo
-
-
-def _rama_imagenes_mapped(estado: EstadoGrafo) -> str:
-    """Maps rama result to actual node IDs."""
-    return "generar_imagenes_x5" if estado.salida.get("num_escenas", 0) > 5 else "generar_imagenes_x3"

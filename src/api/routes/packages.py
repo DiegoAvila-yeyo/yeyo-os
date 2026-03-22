@@ -3,18 +3,51 @@ YeyoOS — Package API Endpoints
 Micro-fase 4.11 — Capa 4: Sistema Nervioso
 
 REST API para gestión de paquetes .ypkg.
-Instalar, desinstalar, listar, permisos, updates.
+Delega a PackageInstaller, PackageDatabase y PermissionManager reales.
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from typing import Optional
 import tempfile
-import shutil
 from pathlib import Path
+from datetime import datetime, timezone
+
+from src.pkg.installer import PackageInstaller, InstallError, PermissionDeniedError, SignatureError
+from src.pkg.database import PackageDatabase
+from src.security.permissions import PermissionManager, Permission
 
 
 router = APIRouter(prefix="/api/v1/packages", tags=["packages"])
+
+# Servicios — inicializados al arrancar la app via init_package_services()
+_installer: Optional[PackageInstaller] = None
+_db: Optional[PackageDatabase] = None
+_perm_manager: Optional[PermissionManager] = None
+
+
+def init_package_services(
+    installer: Optional[PackageInstaller] = None,
+    db: Optional[PackageDatabase] = None,
+    perm_manager: Optional[PermissionManager] = None,
+) -> None:
+    """Inicializa los servicios de paquetes. Llamar al arrancar la app."""
+    global _installer, _db, _perm_manager
+    _installer = installer or PackageInstaller()
+    _db = db
+    _perm_manager = perm_manager or PermissionManager()
+
+
+def _get_installer() -> PackageInstaller:
+    if _installer is None:
+        init_package_services()
+    return _installer  # type: ignore
+
+
+def _get_perm_manager() -> PermissionManager:
+    if _perm_manager is None:
+        init_package_services()
+    return _perm_manager  # type: ignore
 
 
 class PackageInfo(BaseModel):
@@ -62,21 +95,20 @@ class MessageResponse(BaseModel):
     message: str
 
 
-_installed_packages: dict[str, dict] = {}
-_package_permissions: dict[str, dict[str, bool]] = {}
-
-
 @router.post("/install", response_model=InstallResponse)
 async def install_package(file: UploadFile = File(...)):
     """
     POST /api/v1/packages/install — Instalar un paquete .ypkg
-    Recibe el archivo .ypkg y lo instala en el sistema.
+    Recibe el archivo .ypkg y lo instala via PackageInstaller.
     """
     if not file.filename or not file.filename.endswith(".ypkg"):
         raise HTTPException(
             status_code=400,
             detail="Formato inválido. Se requiere un archivo .ypkg",
         )
+
+    installer = _get_installer()
+    tmp_path = None
 
     try:
         with tempfile.NamedTemporaryFile(
@@ -86,42 +118,36 @@ async def install_package(file: UploadFile = File(...)):
             tmp.write(content)
             tmp_path = tmp.name
 
-        package_name = file.filename.replace(".ypkg", "").rsplit("-", 1)[0]
-
-        package_info = {
-            "name": package_name,
-            "version": "1.0.0",
-            "author": "unknown",
-            "description": f"Package {package_name}",
-            "type": "node",
-            "privilege_level": "L2",
-            "status": "installed",
-        }
-        _installed_packages[package_name] = package_info
-
-        Path(tmp_path).unlink(missing_ok=True)
+        pkg_info = await installer.install(tmp_path)
 
         return InstallResponse(
             success=True,
-            package=PackageInfo(**package_info),
+            package=PackageInfo(**pkg_info),
         )
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except SignatureError as e:
+        raise HTTPException(status_code=422, detail=f"Firma inválida: {e}")
+    except InstallError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
 
 
 @router.delete("/{name}", response_model=MessageResponse)
 async def uninstall_package(name: str):
     """
-    DELETE /api/v1/packages/{name} — Desinstalar un paquete.
+    DELETE /api/v1/packages/{name} — Desinstalar un paquete via PackageInstaller.
     """
-    if name not in _installed_packages:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Paquete '{name}' no encontrado",
-        )
+    installer = _get_installer()
 
-    del _installed_packages[name]
-    _package_permissions.pop(name, None)
+    try:
+        await installer.uninstall(name)
+    except InstallError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
     return MessageResponse(
         success=True,
@@ -134,7 +160,9 @@ async def list_packages():
     """
     GET /api/v1/packages — Listar paquetes instalados.
     """
-    return [PackageInfo(**pkg) for pkg in _installed_packages.values()]
+    installer = _get_installer()
+    packages = installer.list_installed()
+    return [PackageInfo(**pkg) for pkg in packages]
 
 
 @router.get("/{name}", response_model=PackageInfo)
@@ -142,33 +170,46 @@ async def get_package(name: str):
     """
     GET /api/v1/packages/{name} — Obtener info de un paquete.
     """
-    if name not in _installed_packages:
+    installer = _get_installer()
+    try:
+        pkg = installer.get_info(name)
+    except InstallError:
         raise HTTPException(
             status_code=404,
             detail=f"Paquete '{name}' no encontrado",
         )
-    return PackageInfo(**_installed_packages[name])
+    return PackageInfo(**pkg)
 
 
 @router.post("/{name}/permissions", response_model=PermissionResponse)
 async def manage_permissions(name: str, request: PermissionRequest):
     """
-    POST /api/v1/packages/{name}/permissions — Gestionar permisos.
+    POST /api/v1/packages/{name}/permissions — Gestionar permisos (ALLOWLIST).
     """
-    if name not in _installed_packages:
+    installer = _get_installer()
+    try:
+        installer.get_info(name)
+    except InstallError:
         raise HTTPException(
             status_code=404,
             detail=f"Paquete '{name}' no encontrado",
         )
 
-    if name not in _package_permissions:
-        _package_permissions[name] = {}
+    pm = _get_perm_manager()
+
+    try:
+        perm = Permission(request.permission)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Permiso inválido: {request.permission}",
+        )
 
     if request.action == "grant":
-        _package_permissions[name][request.permission] = True
+        await pm.request(name, [perm])
         granted = True
     else:
-        _package_permissions[name][request.permission] = False
+        await pm.revoke(name, perm)
         granted = False
 
     return PermissionResponse(
@@ -183,18 +224,23 @@ async def get_permissions(name: str):
     """
     GET /api/v1/packages/{name}/permissions — Obtener permisos de un paquete.
     """
-    if name not in _installed_packages:
+    installer = _get_installer()
+    try:
+        installer.get_info(name)
+    except InstallError:
         raise HTTPException(
             status_code=404,
             detail=f"Paquete '{name}' no encontrado",
         )
 
-    perms = _package_permissions.get(name, {})
+    pm = _get_perm_manager()
+    granted_perms = await pm.get_grants(name)
+
     return {
         "package_name": name,
         "permissions": [
-            {"permission": p, "granted": g}
-            for p, g in perms.items()
+            {"permission": p.value, "granted": True}
+            for p in granted_perms
         ],
     }
 
@@ -204,4 +250,7 @@ async def check_updates():
     """
     GET /api/v1/packages/updates/check — Verificar actualizaciones.
     """
-    return {"updates": [], "checked_at": "now"}
+    return {
+        "updates": [],
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }

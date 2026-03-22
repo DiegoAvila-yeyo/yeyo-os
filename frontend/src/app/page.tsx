@@ -24,11 +24,14 @@ import { HubSidebar, NodoMiniInfo } from '@/components/layout/HubSidebar';
 import { FreeCanvas, NodoLibreInfo } from '@/components/hub/FreeCanvas';
 import { KillSwitchOverlay } from '@/components/security/KillSwitchOverlay';
 
+import { useChatStore } from '@/lib/store/chat-store';
+
 // Node workspaces
 import { ImageNodeLayout } from '@/components/nodes/ImageNodeLayout';
 import { VideoNodeLayout } from '@/components/nodes/VideoNodeLayout';
 import { CodeNodeLayout } from '@/components/nodes/CodeNodeLayout';
 import { AutomationNodeLayout } from '@/components/nodes/AutomationNodeLayout';
+import ChatPanel from '@/components/chat/ChatPanel';
 
 // ─── Nodos disponibles en el Hub ───────────────────────────────────────────────
 const NODOS_HUB: NodoLibreInfo[] = [
@@ -88,6 +91,16 @@ function HubPrincipal() {
   };
 
   const abrirNodo = useCallback((nodeId: string) => {
+    // Chat: abrir panel lateral
+    if (nodeId === 'chat') {
+      useChatStore.getState().setPanelOpen(true);
+      return;
+    }
+    // Memoria: abrir panel lateral de chat (por ahora)
+    if (nodeId === 'memoria') {
+      useChatStore.getState().setPanelOpen(true);
+      return;
+    }
     if (!['imagen', 'video', 'codigo', 'automacion'].includes(nodeId)) return;
     const ws = nodeId as WorkspaceId;
     setActiveWorkspace(ws);
@@ -164,6 +177,9 @@ function HubPrincipal() {
 
       {/* KILL SWITCH OVERLAY (siempre montado, activa con Ctrl+Alt+K) */}
       <KillSwitchOverlay />
+
+      {/* CHAT PANEL (slide-in desde la derecha) */}
+      <ChatPanel />
     </div>
   );
 }

@@ -1,10 +1,10 @@
-# YeyoOS — Sistema Operativo AI-Nativo
+# YeyoOS — Shell de IA Nativo
 
 > *"Una bola de nieve cayendo por la colina — conforme avanza, se vuelve más grande."*
 
 ## ¿Qué es YeyoOS?
 
-YeyoOS es un sistema operativo donde **la inteligencia artificial es el centro de todo**. No es una computadora con IA añadida — es una IA con computadora. Al encender la PC, no ves un escritorio con iconos. Ves un **"cerebro visual"**: nodos flotantes conectados, cada uno representando una capacidad creativa impulsada por IA.
+YeyoOS es un **Shell de IA fullscreen** que corre sobre cualquier sistema operativo (Windows, Mac, Linux). No es una computadora con IA añadida — es una IA con computadora. Al encender, no ves un escritorio tradicional. Ves un **"cerebro visual"**: nodos flotantes conectados, cada uno representando una capacidad creativa impulsada por IA.
 
 ## Visión
 
@@ -29,10 +29,10 @@ Crear lo inimaginable. Un sistema que:
 | 08 | [Escalabilidad](docs/08-escalabilidad.md) | De PC personal a servidores |
 | 09 | [Stack Tecnológico](docs/09-stack-tecnologico.md) | Tecnologías, herramientas y dependencias |
 | 10 | [Fases de Desarrollo](docs/10-fases.md) | Roadmap completo del proyecto |
-| 11 | [Compositor Visual](docs/11-compositor.md) | YEYO Compositor: Wayland, shaders, integración con IA |
 | 12 | [Sistema de Paquetes](docs/12-yeyo-pkg.md) | YEYO-PKG: formato .ypkg, Store, instalación de nodos |
 | 13 | [Code Dojo](docs/13-code-dojo.md) | Agentes de código, RAG, LoRA, entrenamiento automático |
 | 14 | [Hardware](docs/14-hardware.md) | Compatibilidad, GPU Scheduler, estrategias de optimización |
+| 17 | [Investigador Model](docs/17-modelo-investigador.md) | Pipeline de búsqueda, micro-tareas, razonamiento extendido |
 
 > 🔒 **Nota:** La documentación de seguridad se encuentra en un repositorio privado separado (`yeyo-os-security`) con 8 documentos detallados y 31+ capas de protección.
 
@@ -46,7 +46,7 @@ Crear lo inimaginable. Un sistema que:
 ### Estrategia de Desarrollo
 - **Desarrollo principal:** PC Windows con WSL2 (Ubuntu dentro de Windows)
 - **Mac M1:** Edición de código, diseño de interfaz, documentación, backup del repositorio
-- **Fase 12:** Se formatea la PC Windows y se instala YeyoOS (Linux) directamente
+- **Distribución:** Instaladores multiplataforma (.exe, .dmg, .deb/.rpm) y Docker containers
 
 ## Estado del Proyecto
 

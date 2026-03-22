@@ -2,7 +2,7 @@
 
 ## El Problema
 
-Las IAs "alucinan" cuando inventan información que suena real pero es falsa. En un sistema operativo donde la IA es el centro de todo, esto es inaceptable. Un dato falso podría propagarse a videos, publicaciones y decisiones de negocio.
+Las IAs "alucinan" cuando inventan información que suena real pero es falsa. En un Shell de IA donde la IA es el centro de todo, esto es inaceptable. Un dato falso podría propagarse a videos, publicaciones y decisiones de negocio.
 
 ## Principio
 

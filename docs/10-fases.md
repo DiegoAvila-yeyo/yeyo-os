@@ -21,6 +21,8 @@ El proyecto se divide en fases incrementales. Cada fase produce algo funcional y
 
 **Resultado:** `docker-compose up` levanta todos los servicios.
 
+> **Nota:** YeyoOS corre como aplicación fullscreen sobre el SO host. No es necesario instalar Linux from scratch — los servicios de backend (Postgres, Redis, Ollama) se despliegan via Docker o instaladores nativos para Windows/Mac/Linux.
+
 ---
 
 ## Fase 1: Interfaces y Contratos

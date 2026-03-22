@@ -82,16 +82,13 @@
 Capa 7 es la EVOLUCIÓN. YeyoOS aprende, se distribuye, y se prueba como un reloj suizo. El Swiss Watch Test es la prueba final: si pasa, YeyoOS está listo para el mundo.
 
 - **LoRA Training Pipeline**: Fine-tuning con QLoRA 4-bit para 3GB VRAM. SOLO en idle time (P3). Nightly.
-- **Training Data Extractor**: Extrae datos de Flash Memory (correcciones, preferencias, skills). Mínimo 100 muestras.
-- **LoRA Validation**: Compara modelo base vs LoRA. Auto-rollback si calidad baja >10%.
 - **YEYO Store**: Marketplace de paquetes con niveles de confianza (Verified/Trusted/New). Scan de seguridad automático.
 - **Store Security**: Análisis automatizado: manifiesto, container, red, firma, malware. Score 0-100.
 - **Store Frontend**: UI integrada en Neural Hub. Búsqueda, categorías, reviews, instalación con diálogo de permisos.
-- **ISO Builder**: Genera ISO bootable (~2-4GB). UEFI + Legacy BIOS. debootstrap + squashfs + xorriso.
-- **Installation Wizard**: Setup de primer boot: idioma, timezone, usuario, Btrfs, Ollama, Flash Memory, Guardian.
+- **Instaladores Multiplataforma**: Generadores de .exe (Windows), .dmg (Mac), .deb/.rpm (Linux). Installation wizard: idioma, timezone, usuario, Ollama, Flash Memory, Guardian.
 - **Multi-User**: Roles (admin/user/guest). Flash Memory aislada por usuario. Login con argon2.
 - **Data Migration**: Export/import cifrado AES-256. Merge inteligente (no overwrite).
-- **Corporate Deployment**: ISO pre-configurada, políticas, LDAP placeholder, fleet management placeholder.
+- **Corporate Deployment**: Políticas pre-configuradas, LDAP placeholder, fleet management placeholder.
 - **Performance Optimization**: Profiling final. Cache hit rate >80%, DB queries <50ms, frontend <3s.
 - **Documentation Generator**: Genera docs HTML desde docstrings + OpenAPI spec.
 - **YEYO Observer**: Monitoreo a largo plazo. Tendencias, alertas de degradación, reporte semanal.
@@ -102,8 +99,6 @@ Capa 7 es la EVOLUCIÓN. YeyoOS aprende, se distribuye, y se prueba como un relo
 - **GPU Scheduler**: gRPC — GPUPool registra VRAM de cada nodo, allocate_best() elige el nodo con más VRAM libre.
 - **Federated Learning**: Flower — FedAvg de mini-LoRAs locales. PrivacyFilter con differential privacy.
 - **Cluster Dashboard**: React/TS — nodos, métricas Prometheus en tiempo real, cola de tareas distribuidas.
-- **Instalador .sh**: Scripts bash para Ubuntu/Debian/Arch — instala todo en < 30 min, configura systemd.
-- **ISO Booteable**: live-build Debian 12 — ISO < 4GB, GRUB tema YeyoOS, auto-instala al boot.
 
 **REGLA DE ORO**: El Swiss Watch Test es la PRUEBA FINAL. 50 checks cubriendo las 7+2 capas. Test de endurance de 24h: sin memory leaks, sin VRAM leaks, 1000 mensajes de chat continuo. Score ≥45/50 o NO SE PUBLICA. Esta es la ÚLTIMA capa — después de esto, YeyoOS está listo para el mundo.
 

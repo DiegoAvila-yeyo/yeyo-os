@@ -1,5 +1,5 @@
 # 🛡️ CAPA 6: SISTEMA INMUNE — Prompts de Ejecución
-# Total: 12 micro-fases → 14 prompts (9 VSCODE + 2 CLI + 1 VSCODE+CLI + 1 MIXTA + 1 extra)
+# Total: 16 micro-fases → 18 prompts (13 VSCODE + 2 CLI + 1 VSCODE+CLI + 1 MIXTA + 1 extra)
 # Flujo: Copiar prompt → Pegar en Copilot (VS Code o CLI) → Ejecutar → Verificar → Siguiente
 # ⚠️ Kill Switch PAUSA, nunca mata. Flash Memory = lo más valioso, NUNCA se borra. Guardian en RUST obligatorio.
 
@@ -14,7 +14,6 @@
 | 6.1 — Guardian Anomaly Detection | [prompt-6.1-1.md](prompt-6.1-1.md) | VSCODE | Compleja |
 | 6.2 — Guardian Auto-Response | [prompt-6.2-1.md](prompt-6.2-1.md) | VSCODE | Media |
 | 6.3 — Kill Switch | [prompt-6.3-1.md](prompt-6.3-1.md) | VSCODE+CLI | Compleja |
-| 6.4 — Smart Snapshots | [prompt-6.4-1.md](prompt-6.4-1.md) | VSCODE | Media |
 | 6.5 — Backup System (3-2-1) | [prompt-6.5-1.md](prompt-6.5-1.md) | CLI | Compleja |
 | 6.6 — Anti-Ransomware | [prompt-6.6-1.md](prompt-6.6-1.md) | VSCODE | Media |
 | 6.7 — Honeypots | [prompt-6.7-1.md](prompt-6.7-1.md) | VSCODE | Media |
@@ -22,6 +21,11 @@
 | 6.9 — Security Dashboard | [prompt-6.9-1.md](prompt-6.9-1.md) | VSCODE | Media |
 | 6.10 — Security Audit System | [prompt-6.10-1.md](prompt-6.10-1.md) | VSCODE | Media |
 | 6.11 — Integration Test Capa 6 | [prompt-6.11-1.md](prompt-6.11-1.md) | MIXTA | Compleja |
+| 6.12 — YEYO-HACK: Red Team Nocturno | [prompt-6.12-1.md](prompt-6.12-1.md) | VSCODE | Compleja |
+| 6.13 — YeyoQuality: Feedback Objetivo | [prompt-6.13-1.md](prompt-6.13-1.md) | VSCODE | Compleja |
+| 6.14 — YeyoLint: Análisis Estático | [prompt-6.14-1.md](prompt-6.14-1.md) | VSCODE | Compleja |
+| 6.15 — YeyoBenchmark: Examen Semanal | [prompt-6.15-1.md](prompt-6.15-1.md) | VSCODE | Compleja |
+| 6.16 — YeyoMergeGuard: Validación YeyoNet | [prompt-6.16-1.md](prompt-6.16-1.md) | VSCODE | Compleja |
 
 ---
 
@@ -33,7 +37,6 @@
 | 6.1 Anomaly Detection | 1 | VSCODE | ⬜ |
 | 6.2 Auto-Response | 1 | VSCODE | ⬜ |
 | 6.3 Kill Switch | 1 | VSCODE+CLI | ⬜ |
-| 6.4 Smart Snapshots | 1 | VSCODE | ⬜ |
 | 6.5 Backup 3-2-1 | 1 | CLI | ⬜ |
 | 6.6 Anti-Ransomware | 1 | VSCODE | ⬜ |
 | 6.7 Honeypots | 1 | VSCODE | ⬜ |
@@ -41,19 +44,24 @@
 | 6.9 Security Dashboard | 1 | VSCODE | ⬜ |
 | 6.10 Audit System | 1 | VSCODE | ⬜ |
 | 6.11 Integration Test | 1 | MIXTA | ⬜ |
-| **TOTAL** | **14** | **9 VSCODE + 2 CLI + 1 VSCODE+CLI + 1 MIXTA + 1 extra** | |
+| 6.12 YEYO-HACK Red Team | 1 | VSCODE | ⬜ |
+| 6.13 YeyoQuality | 1 | VSCODE | ⬜ |
+| 6.14 YeyoLint | 1 | VSCODE | ⬜ |
+| 6.15 YeyoBenchmark | 1 | VSCODE | ⬜ |
+| 6.16 YeyoMergeGuard | 1 | VSCODE | ⬜ |
+| **TOTAL** | **18** | **13 VSCODE + 2 CLI + 1 VSCODE+CLI + 1 MIXTA + 1 extra** | |
 
 ---
 
 ## 🛡️ Filosofía de Capa 6
 
-Capa 6 es el SISTEMA INMUNE. Guardian protege a YeyoOS como los glóbulos blancos protegen al cuerpo. La Flash Memory es más valiosa que el propio OS.
+Capa 6 es el SISTEMA INMUNE. Guardian protege a YeyoOS como los glóbulos blancos protegen al cuerpo. La Flash Memory es más valiosa que el propio host OS.
 
-- **Guardian Daemon**: Daemon en Rust que monitorea TODO el sistema. Corre como servicio systemd, arranca antes que todo.
+- **Guardian Daemon**: Daemon en Rust que monitorea TODO el sistema. Arranca antes que la aplicación principal.
 - **Anomaly Detection**: Detección de anomalías estadística (z-score). Sin ML pesado, eficiente y rápido.
 - **Auto-Response**: Respuestas automáticas a eventos de seguridad. NUNCA borra nada automáticamente.
 - **Kill Switch**: Ctrl+Alt+K — PAUSA toda la IA. No mata, PAUSA. Funciona incluso sin UI.
-- **Smart Snapshots**: Btrfs snapshots disparados por eventos, no solo por tiempo.
+- **Smart Snapshots**: Snapshots de base de datos disparados por eventos, no solo por tiempo (fallback: tar.gz si no hay Btrfs).
 - **Backup 3-2-1**: 3 copias, 2 medios diferentes, 1 offsite. Restic cifrado AES-256.
 - **Anti-Ransomware**: Detecta cifrado masivo de archivos, pausa inmediata.
 - **Honeypots**: Archivos y servicios falsos para detectar intrusiones.

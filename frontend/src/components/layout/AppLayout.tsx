@@ -11,8 +11,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useUIStore } from '@/lib/store/ui-store';
 
-export const MIN_WIDTH = 1024;
-export const MIN_HEIGHT = 768;
+export const MIN_WIDTH = 800;
+export const MIN_HEIGHT = 500;
 
 export interface AppLayoutProps {
   canvas: ReactNode;

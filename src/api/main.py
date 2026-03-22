@@ -80,6 +80,11 @@ async def status():
 
 
 from src.api.websocket import manager
+from src.api.tts import router as tts_router
+
+
+# Registrar routers
+app.include_router(tts_router)
 
 
 @app.websocket("/ws")

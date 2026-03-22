@@ -1,0 +1,24 @@
+
+> frontend-tmp@0.1.0 test
+> jest src/__tests__/hub/FreeCanvas.test.tsx --watchAll=false
+
+PASS src/__tests__/hub/FreeCanvas.test.tsx
+  hubStore ÔÇö posiciones y pipeline
+    ÔêÜ setPosicionNodo guarda posici├│n (3 ms)
+    ÔêÜ guardarPosicionesEnStorage persiste en localStorage
+    ÔêÜ cargarPosicionesDesdeStorage restaura posiciones
+    ÔêÜ setNodosInstalados actualiza lista (1 ms)
+    ÔêÜ setPipelineActivo activa el pipeline con nodos
+    ÔêÜ setPipelineActivo desactiva el pipeline
+  VignetteOverlay
+    ÔêÜ renderiza con data-visible=false por defecto (25 ms)
+    ÔêÜ renderiza con data-visible=true cuando visible=true (4 ms)
+    ÔêÜ tiene pointer-events none (no bloquea interacci├│n) (22 ms)
+    ÔêÜ opacity 0 cuando visible=false (4 ms)
+    ÔêÜ opacity maxOpacity cuando visible=true (4 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       11 passed, 11 total
+Snapshots:   0 total
+Time:        1.545 s
+Ran all test suites matching /src\\__tests__\\hub\\FreeCanvas.test.tsx/i.

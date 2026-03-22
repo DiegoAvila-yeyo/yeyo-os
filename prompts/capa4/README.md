@@ -1,5 +1,5 @@
 # 🔌 CAPA 4: SISTEMA NERVIOSO — Prompts de Ejecución
-# Total: 14 micro-fases → 16 prompts (13 VSCODE + 1 VSCODE-SIMPLE + 1 MIXTA + 1 extra)
+# Total: 24 micro-fases → 26 prompts (23 VSCODE + 1 VSCODE-SIMPLE + 1 MIXTA + 1 extra)
 # Flujo: Copiar prompt → Pegar en Copilot (VS Code o CLI) → Ejecutar → Verificar → Siguiente
 # ⚠️ Podman SIEMPRE. Docker NUNCA. Socket de Docker JAMÁS montado. Nodos IA SIEMPRE L5.
 
@@ -24,6 +24,16 @@
 | 4.11 — Package API Endpoints | [prompt-4.11-1.md](prompt-4.11-1.md) | VSCODE | Media |
 | 4.12 — Package Frontend UI | [prompt-4.12-1.md](prompt-4.12-1.md) | VSCODE | Media |
 | 4.13 — Integration Test Capa 4 | [prompt-4.13-1.md](prompt-4.13-1.md) | MIXTA | Compleja |
+| 4.14 — EstadoGrafo Core | [prompt-4.14-1.md](prompt-4.14-1.md) | VSCODE | Media |
+| 4.15 — Nodo Base + Decoradores | [prompt-4.15-1.md](prompt-4.15-1.md) | VSCODE | Compleja |
+| 4.16 — Edge + Condiciones | [prompt-4.16-1.md](prompt-4.16-1.md) | VSCODE | Media |
+| 4.17 — YeyoGrafo Coordinador | [prompt-4.17-1.md](prompt-4.17-1.md) | VSCODE | Compleja |
+| 4.18 — NodoParalelo | [prompt-4.18-1.md](prompt-4.18-1.md) | VSCODE | Media |
+| 4.19 — YeyoOrquestador + Ollama Tool Calling | [prompt-4.19-1.md](prompt-4.19-1.md) | VSCODE | Compleja |
+| 4.20 — Catálogo de Nodos Base | [prompt-4.20-1.md](prompt-4.20-1.md) | VSCODE | Media |
+| 4.21 — Grafos Estáticos Principales | [prompt-4.21-1.md](prompt-4.21-1.md) | VSCODE | Media |
+| 4.22 — WebSocket Graph Events (Backend) | [prompt-4.22-1.md](prompt-4.22-1.md) | VSCODE | Media |
+| 4.23 — Integration Test Capa 4 (Orquestador) | [prompt-4.23-1.md](prompt-4.23-1.md) | MIXTA | Compleja |
 
 ---
 
@@ -45,7 +55,17 @@
 | 4.11 Package API | 1 | VSCODE | ⬜ |
 | 4.12 Package UI | 1 | VSCODE | ⬜ |
 | 4.13 Integration Test | 1 | MIXTA | ⬜ |
-| **TOTAL** | **16** | **13 VSCODE + 1 SIMPLE + 1 MIXTA + 1 extra** | |
+| 4.14 EstadoGrafo Core | 1 | VSCODE | ⬜ |
+| 4.15 Nodo Base + Decoradores | 1 | VSCODE | ⬜ |
+| 4.16 Edge + Condiciones | 1 | VSCODE | ⬜ |
+| 4.17 YeyoGrafo Coordinador | 1 | VSCODE | ⬜ |
+| 4.18 NodoParalelo | 1 | VSCODE | ⬜ |
+| 4.19 YeyoOrquestador + Ollama | 1 | VSCODE | ⬜ |
+| 4.20 Catálogo de Nodos Base | 1 | VSCODE | ⬜ |
+| 4.21 Grafos Estáticos | 1 | VSCODE | ⬜ |
+| 4.22 WebSocket Graph Events | 1 | VSCODE | ⬜ |
+| 4.23 Integration Test Orquestador | 1 | MIXTA | ⬜ |
+| **TOTAL** | **26** | **23 VSCODE + 1 SIMPLE + 2 MIXTA** | |
 
 ---
 
@@ -64,6 +84,20 @@ Capa 4 conecta todo. Los paquetes, los permisos, los containers — es el **sist
 - **Apt**: Invisible para el usuario. Solo dentro de containers.
 
 **REGLA DE ORO**: Podman SIEMPRE. Docker NUNCA. Nodos generados por IA SIEMPRE en sandbox L5. Socket de Docker JAMÁS montado.
+
+### YeyoOrquestador (4.14-4.23)
+
+Las micro-fases 4.14-4.23 implementan el **YeyoOrquestador**, el motor de orquestación nativo de YeyoOS que reemplaza OpenClaw:
+
+- **Diseño híbrido**: código Python puro + capa declarativa encima
+- **EstadoGrafo**: objeto central que fluye entre nodos, serializable para checkpoints
+- **Nodos**: 3 formas de definición (decorador `@nodo`, herencia, inline `lambda`)
+- **Edges**: EdgeDirecto, EdgeCondicional con función sync/async, decorador `@edge`
+- **YeyoGrafo**: API fluida con method chaining, sub-grafos, timeouts, retry
+- **NodoParalelo**: asyncio.gather, fail_fast / continue_on_error
+- **YeyoOrquestador**: integra con Ollama tool calling — Ollama elige qué grafo ejecutar
+- **CatalogoNodos**: 5 nodos base registrados (chat, embeddings, memoria, log)
+- **WebSocket events**: cada cambio de estado de nodo emite evento en tiempo real
 
 ## 🔗 Dependencias
 

@@ -2,7 +2,9 @@
 
 ## La Idea Central
 
-YeyoOS no es un sistema operativo tradicional con IA agregada. Es un **sistema operativo donde la IA ES la experiencia**. La computadora se convierte en un cerebro creativo que aprende, piensa y crea.
+YeyoOS no es un sistema operativo tradicional con IA agregada. Es un **Shell de IA fullscreen donde la IA ES la experiencia**. La computadora se convierte en un cerebro creativo que aprende, piensa y crea.
+
+Corre sobre Windows, Mac o Linux — el SO host es solo la base. YeyoOS es la capa de aplicación que transforma cualquier computadora en una IA cognitiva.
 
 ## Filosofía
 
@@ -19,7 +21,7 @@ Mejores resultados → Creas más rápido
 Más datos en memoria → La IA entiende mejor
      │
      ▼
-Mejoras el código del OS → La IA es más capaz
+Mejoras el código del Shell → La IA es más capaz
      │
      ▼
 Creas contenido aún mejor → ...

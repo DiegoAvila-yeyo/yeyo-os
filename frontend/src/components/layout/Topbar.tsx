@@ -12,6 +12,7 @@
 import React, { useCallback } from 'react'
 import { useHubStore } from '../../stores/hubStore'
 import { useSystemStore } from '../../stores/systemStore'
+import { MicIndicator } from '../voice/MicIndicator'
 
 export interface TabInfo {
   id: string
@@ -151,6 +152,9 @@ export function Topbar({ tabs, onTabClick, onTabClose, onToggleSidebar, sidebarO
       >
         ⚡
       </div>
+
+      {/* MicIndicator — Micro-fase 5.27 */}
+      <MicIndicator />
 
       {/* Kill Switch */}
       <button

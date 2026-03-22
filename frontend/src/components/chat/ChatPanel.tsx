@@ -149,6 +149,7 @@ export default function ChatPanel() {
         let buffer = '';
         let fullContent = '';
         let flushTimer: ReturnType<typeof setTimeout> | null = null;
+        let pendingChunks = '';
 
         const flushBuffer = () => {
           if (buffer) {
@@ -162,7 +163,20 @@ export default function ChatPanel() {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+          pendingChunks += decoder.decode(value, { stream: true });
+
+          // Parse SSE: each line is "data: <content>\n\n"
+          const lines = pendingChunks.split('\n');
+          pendingChunks = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const chunk = line.slice(6);
+              if (chunk === '[DONE]') continue;
+              buffer += chunk;
+            }
+          }
+
           if (!flushTimer) flushTimer = setTimeout(flushBuffer, BATCH_FLUSH_MS);
         }
 

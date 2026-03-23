@@ -1,326 +1,126 @@
 /**
- * YeyoOS — SecurityDashboard
- * Micro-fase 3.21 — Capa 3: Cuerpo
- *
- * Dashboard de seguridad: resumen de permisos, lista de nodos,
- * historial últimas 24h, drawer lateral por nodo.
+ * YeyoOS — Security Dashboard
+ * Micro-fase 6.9 — Capa 6: Sistema Inmune
  */
 
-import React, { useState, useMemo } from 'react'
-import { useSecurityStore, PermissionRecord, AccessLogEntry } from '../../stores/securityStore'
+'use client';
 
-export function SecurityDashboard() {
-  const { permissions, history, denyPermission } = useSecurityStore()
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
+import React, { useState, useCallback } from 'react';
+import { useGuardian } from '../../hooks/useGuardian';
+import KillSwitchButton from './KillSwitchButton';
 
-  const now = Date.now()
-  const last24h = useMemo(
-    () => history.filter((e) => now - e.timestamp < 24 * 60 * 60 * 1000),
-    [history, now]
-  )
+const GUARDIAN_API = 'http://localhost:9090';
 
-  const autoActive = useMemo(
-    () => [...permissions.values()].flat().filter((p) => p.zone === 'green').length,
-    [permissions]
-  )
-  const confirmed = useMemo(
-    () => last24h.filter((e) => e.result === 'allowed').length,
-    [last24h]
-  )
-  const blocked = useMemo(
-    () => last24h.filter((e) => e.result === 'denied').length,
-    [last24h]
-  )
+export default function SecurityDashboard() {
+  const { status, alerts, heartbeat, isConnected, isLoading, error, refresh } = useGuardian(5000);
+  const [killSwitchPaused, setKillSwitchPaused] = useState(false);
 
-  const selectedPerms = selectedNodeId ? permissions.get(selectedNodeId) ?? [] : []
-  const selectedHistory = useMemo(
-    () => last24h.filter((e) => e.nodeId === selectedNodeId),
-    [last24h, selectedNodeId]
-  )
+  const handleKillSwitchToggle = useCallback(async () => {
+    try {
+      const res = await fetch(`${GUARDIAN_API}/kill-switch/toggle`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setKillSwitchPaused(data.state === 'Paused');
+      }
+    } catch { console.error('Error toggling Kill Switch'); }
+  }, []);
 
-  const openDrawer = (nodeId: string) => {
-    setSelectedNodeId(nodeId)
-    setDrawerOpen(true)
-  }
-  const closeDrawer = () => {
-    setDrawerOpen(false)
-    setSelectedNodeId(null)
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   return (
-    <div
-      data-testid="security-dashboard"
-      style={{
-        padding: '24px 32px',
-        fontFamily: 'Inter, system-ui, sans-serif',
-        color: '#C9D1D9',
-        background: '#0D1117',
-        minHeight: '100%',
-      }}
-    >
-      <h2 style={{ color: '#fff', marginBottom: 24, fontSize: 22, fontWeight: 700 }}>
-        🛡️ Seguridad
-      </h2>
-
-      {/* Cards resumen */}
-      <div
-        data-testid="summary-cards"
-        style={{ display: 'flex', gap: 16, marginBottom: 32 }}
-      >
-        {[
-          { label: 'Auto activos', value: autoActive, color: '#2EA043', icon: '🟢' },
-          { label: 'Confirmados (24h)', value: confirmed, color: '#FFD600', icon: '✅' },
-          { label: 'Bloqueados (24h)', value: blocked, color: '#FF4444', icon: '❌' },
-        ].map((card) => (
-          <div
-            key={card.label}
-            data-testid={`card-${card.label.toLowerCase().replace(/\s+/g, '-').replace(/[()\/]/g, '')}`}
-            style={{
-              flex: 1,
-              background: '#161B22',
-              border: `1px solid ${card.color}44`,
-              borderRadius: 10,
-              padding: '16px 20px',
-            }}
-          >
-            <div style={{ fontSize: 28, fontWeight: 800, color: card.color }}>
-              {card.icon} {card.value}
-            </div>
-            <div style={{ fontSize: 13, color: '#8B949E', marginTop: 4 }}>{card.label}</div>
-          </div>
-        ))}
+    <div className="flex flex-col gap-6 p-6 bg-gray-950 min-h-screen text-gray-100">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">🛡️ Security Dashboard</h1>
+          <p className="text-sm text-gray-400 mt-1">Capa 6: Sistema Inmune — Guardian v{status?.guardian || '?'}</p>
+        </div>
+        <KillSwitchButton isPaused={killSwitchPaused} onToggle={handleKillSwitchToggle} />
       </div>
 
-      {/* Lista de nodos con permisos */}
-      <div style={{ marginBottom: 32 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: '#8B949E', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-          Nodos y Permisos
-        </h3>
-        <div
-          data-testid="nodes-list"
-          style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
-        >
-          {[...permissions.entries()].map(([nodeId, perms]) => (
-            <div
-              key={nodeId}
-              data-testid={`node-row-${nodeId}`}
-              onClick={() => openDrawer(nodeId)}
-              style={{
-                background: '#161B22',
-                border: '1px solid #21262D',
-                borderRadius: 8,
-                padding: '12px 16px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                transition: 'border-color 0.15s',
-              }}
-            >
-              <div style={{ fontWeight: 600, flex: 1 }}>{nodeId}</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {perms.map((p) => (
-                  <span
-                    key={p.permission}
-                    style={{
-                      fontSize: 11,
-                      padding: '2px 8px',
-                      borderRadius: 12,
-                      background:
-                        p.zone === 'green' ? '#1B4332' :
-                        p.zone === 'yellow' ? '#2E2400' : '#1A0A0A',
-                      color:
-                        p.zone === 'green' ? '#2EA043' :
-                        p.zone === 'yellow' ? '#FFD600' : '#FF6B6B',
-                      border: `1px solid ${
-                        p.zone === 'green' ? '#2EA04344' :
-                        p.zone === 'yellow' ? '#FFD60044' : '#FF174444'
-                      }`,
-                    }}
-                  >
-                    {p.zone === 'green' ? '🟢' : p.zone === 'yellow' ? '🟡' : '🔴'} {p.permissionLabel}
-                  </span>
-                ))}
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${isConnected ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
+        <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`} />
+        {isConnected ? `Guardian conectado — Uptime: ${formatUptime(status?.uptime_secs || 0)}` : `Guardian desconectado: ${error}`}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard title="CPU" value={status?.resource_snapshot?.cpu_usage_percent ?? 0} unit="%" threshold={90} icon="⚡" />
+        <MetricCard title="RAM" value={status?.resource_snapshot?.ram_usage_percent ?? 0} unit="%" subtitle={`${status?.resource_snapshot?.ram_used_mb ?? 0} / ${status?.resource_snapshot?.ram_total_mb ?? 0} MB`} threshold={90} icon="🧠" />
+        <MetricCard title="Disco" value={status?.resource_snapshot?.disk_usage_percent ?? 0} unit="%" subtitle={`${(status?.resource_snapshot?.disk_used_gb ?? 0).toFixed(1)} / ${(status?.resource_snapshot?.disk_total_gb ?? 0).toFixed(1)} GB`} threshold={90} icon="💾" />
+        <MetricCard title="Procesos" value={status?.resource_snapshot?.process_count ?? 0} unit="" threshold={500} icon="📊" />
+      </div>
+
+      <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">🚨 Alertas Recientes <span className="text-sm font-normal text-gray-400">({alerts.length})</span></h2>
+        {alerts.length === 0 ? (
+          <p className="text-gray-500 text-sm">Sin alertas activas — sistema estable</p>
+        ) : (
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {alerts.slice(-20).reverse().map((alert, i) => (
+              <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${alert.level === 'Critical' ? 'bg-red-900/30 border border-red-800' : alert.level === 'Warning' ? 'bg-yellow-900/30 border border-yellow-800' : 'bg-blue-900/30 border border-blue-800'}`}>
+                <span>{alert.level === 'Critical' ? '🔴' : alert.level === 'Warning' ? '🟡' : '🔵'}</span>
+                <div className="flex-1"><span className="font-medium">{alert.resource}</span><span className="text-gray-400 ml-2">{alert.message}</span></div>
+                <span className="text-xs text-gray-500">{new Date(alert.timestamp).toLocaleTimeString()}</span>
               </div>
-              <span style={{ color: '#8B949E', fontSize: 18 }}>›</span>
-            </div>
-          ))}
-          {permissions.size === 0 && (
-            <div style={{ color: '#8B949E', fontSize: 14, padding: '16px 0' }}>
-              Ningún nodo ha solicitado permisos aún.
-            </div>
-          )}
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+          <h2 className="text-lg font-semibold mb-3">💓 Heartbeat</h2>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-gray-400">Estado</span><span className="text-green-400">{heartbeat?.status ?? 'unknown'}</span></div>
+            <div className="flex justify-between"><span className="text-gray-400">Beats</span><span>{heartbeat?.beat_count ?? 0}</span></div>
+            <div className="flex justify-between"><span className="text-gray-400">Uptime</span><span>{formatUptime(heartbeat?.uptime_secs ?? 0)}</span></div>
+          </div>
+        </div>
+        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+          <h2 className="text-lg font-semibold mb-3">📦 Backup Status</h2>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-gray-400">Flash Memory</span><span className="text-green-400">Cada 1h</span></div>
+            <div className="flex justify-between"><span className="text-gray-400">Config</span><span className="text-green-400">Cada 6h</span></div>
+            <div className="flex justify-between"><span className="text-gray-400">Sistema</span><span className="text-green-400">Cada 24h</span></div>
+            <div className="flex justify-between"><span className="text-gray-400">Regla 3-2-1</span><span className="text-yellow-400">Configurar</span></div>
+          </div>
         </div>
       </div>
-
-      {/* Historial últimas 24h */}
-      <div>
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: '#8B949E', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-          Historial últimas 24h
-        </h3>
-        <div
-          data-testid="access-history"
-          style={{
-            background: '#161B22',
-            border: '1px solid #21262D',
-            borderRadius: 8,
-            overflow: 'hidden',
-          }}
-        >
-          {last24h.length === 0 ? (
-            <div style={{ padding: '16px 20px', color: '#8B949E', fontSize: 14 }}>
-              Sin actividad en las últimas 24 horas.
-            </div>
-          ) : (
-            last24h.slice().reverse().map((entry, i) => (
-              <div
-                key={i}
-                data-testid="history-entry"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '10px 16px',
-                  borderBottom: i < last24h.length - 1 ? '1px solid #21262D' : 'none',
-                  fontSize: 13,
-                }}
-              >
-                <span style={{ color: '#8B949E', fontFamily: 'monospace', minWidth: 80 }}>
-                  {new Date(entry.timestamp).toLocaleTimeString()}
-                </span>
-                <span style={{ fontWeight: 600, minWidth: 100 }}>{entry.nodeId}</span>
-                <span style={{ color: '#8B949E', flex: 1 }}>{entry.permissionLabel}</span>
-                <span>{entry.result === 'allowed' ? '✅' : '❌'}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Drawer lateral por nodo */}
-      {drawerOpen && selectedNodeId && (
-        <>
-          <div
-            data-testid="drawer-backdrop"
-            onClick={closeDrawer}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.5)',
-              zIndex: 800,
-            }}
-          />
-          <div
-            data-testid="node-drawer"
-            style={{
-              position: 'fixed',
-              top: 0,
-              right: 0,
-              bottom: 0,
-              width: 380,
-              background: '#161B22',
-              borderLeft: '1px solid #30363D',
-              zIndex: 801,
-              padding: '24px 24px',
-              overflowY: 'auto',
-              fontFamily: 'Inter, system-ui, sans-serif',
-              color: '#C9D1D9',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-              <h3 style={{ margin: 0, fontSize: 18, color: '#fff' }}>{selectedNodeId}</h3>
-              <button
-                data-testid="close-drawer"
-                onClick={closeDrawer}
-                style={{ background: 'none', border: 'none', color: '#8B949E', fontSize: 22, cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Permisos granulares */}
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 12, color: '#8B949E', textTransform: 'uppercase', marginBottom: 12, letterSpacing: 0.8 }}>
-                Permisos
-              </div>
-              {selectedPerms.map((p) => (
-                <div
-                  key={p.permission}
-                  data-testid={`perm-row-${p.permission}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '10px 0',
-                    borderBottom: '1px solid #21262D',
-                  }}
-                >
-                  <span style={{ flex: 1, fontSize: 14 }}>{p.permissionLabel}</span>
-                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#8B949E' }}>{p.permission}</span>
-                  <select
-                    data-testid={`zone-select-${p.permission}`}
-                    defaultValue={p.zone}
-                    style={{
-                      background: '#0D1117',
-                      border: '1px solid #30363D',
-                      color: '#C9D1D9',
-                      borderRadius: 4,
-                      padding: '4px 8px',
-                      fontSize: 12,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <option value="green">🟢 Verde</option>
-                    <option value="yellow">🟡 Amarilla</option>
-                    <option value="red">🔴 Roja</option>
-                  </select>
-                </div>
-              ))}
-            </div>
-
-            {/* Historial del nodo */}
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 12, color: '#8B949E', textTransform: 'uppercase', marginBottom: 12, letterSpacing: 0.8 }}>
-                Historial del nodo
-              </div>
-              {selectedHistory.length === 0 ? (
-                <div style={{ color: '#8B949E', fontSize: 13 }}>Sin historial.</div>
-              ) : (
-                selectedHistory.slice().reverse().map((entry, i) => (
-                  <div key={i} style={{ fontSize: 13, padding: '6px 0', borderBottom: '1px solid #21262D22', display: 'flex', gap: 10 }}>
-                    <span style={{ color: '#8B949E', fontFamily: 'monospace' }}>{new Date(entry.timestamp).toLocaleTimeString()}</span>
-                    <span style={{ flex: 1 }}>{entry.permissionLabel}</span>
-                    <span>{entry.result === 'allowed' ? '✅' : '❌'}</span>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Botón revocar todo */}
-            <button
-              data-testid="revoke-all-btn"
-              onClick={() => {
-                selectedPerms.forEach((p) => denyPermission(selectedNodeId, p.permission))
-                closeDrawer()
-              }}
-              style={{
-                width: '100%',
-                background: '#1A0A0A',
-                border: '1px solid #FF4444',
-                color: '#FF6B6B',
-                borderRadius: 6,
-                padding: '11px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontSize: 14,
-              }}
-            >
-              🚫 Revocar todos los permisos
-            </button>
-          </div>
-        </>
-      )}
     </div>
-  )
+  );
+}
+
+interface MetricCardProps { title: string; value: number; unit: string; subtitle?: string; threshold: number; icon: string; }
+
+function MetricCard({ title, value, unit, subtitle, threshold, icon }: MetricCardProps) {
+  const isWarning = value > threshold * 0.8;
+  const isCritical = value > threshold;
+  return (
+    <div className={`bg-gray-900 rounded-xl p-4 border ${isCritical ? 'border-red-600 shadow-red-500/20 shadow-lg' : isWarning ? 'border-yellow-600' : 'border-gray-800'}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm text-gray-400">{icon} {title}</span>
+        <span className={`text-2xl font-bold ${isCritical ? 'text-red-400' : isWarning ? 'text-yellow-400' : 'text-green-400'}`}>
+          {typeof value === 'number' ? value.toFixed(1) : value}{unit}
+        </span>
+      </div>
+      <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-500 ${isCritical ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${Math.min((value / threshold) * 100, 100)}%` }} />
+      </div>
+      {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+    </div>
+  );
+}
+
+function formatUptime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }

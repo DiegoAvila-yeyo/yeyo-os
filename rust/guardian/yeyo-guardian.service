@@ -1,0 +1,18 @@
+[Unit]
+Description=YeyoOS Guardian Daemon — Sistema Inmune
+After=network.target
+Before=yeyo-backend.service yeyo-ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/yeyo-guardian
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=yeyo-guardian
+Environment=RUST_LOG=yeyo_guardian=info
+
+[Install]
+WantedBy=multi-user.target

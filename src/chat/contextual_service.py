@@ -14,12 +14,15 @@ Token Budget:
 - TOTAL:                 4000 tokens
 """
 
+import asyncio
 import logging
 from typing import AsyncIterator, Optional
 
 from src.ia.interfaces import IAProvider, IAMessage, IAResponse
 from src.memory.flash_memory import FlashMemory
 from src.memory.models import Memory
+from src.memory.extraction import MemoryExtractor
+from src.memory.classifier import NamespaceClassifier
 
 logger = logging.getLogger("yeyoos.contextual_chat")
 
@@ -79,6 +82,8 @@ class ContextualChatService:
         self.memory = memory
         self.embeddings = embeddings
         self.system_prompt = system_prompt
+        self._extractor = MemoryExtractor(ia)
+        self._classifier = NamespaceClassifier(ia)
 
     async def build_context(
         self,
@@ -144,6 +149,53 @@ class ContextualChatService:
         logger.info(f"Contexto construido: {total_used}/{BUDGET_TOTAL} tokens usados")
         return context
 
+    async def _extract_and_store(self, user_input: str, assistant_response: str) -> None:
+        """Extracts memorable facts from the exchange and stores them in Flash Memory."""
+        try:
+            should = await self._extractor.should_extract(user_input)
+            if not should:
+                return
+            memories = await self._extractor.extract_from_message(user_input, assistant_response)
+            for mem in memories:
+                embedding = None
+                try:
+                    loop = asyncio.get_event_loop()
+                    embedding = await loop.run_in_executor(
+                        None, self.embeddings.generate, mem["content"]
+                    )
+                except Exception:
+                    pass
+                stored = await self.memory.store(
+                    content=mem["content"],
+                    type=mem.get("type", "fact"),
+                    metadata=mem.get("metadata", {}),
+                    embedding=embedding,
+                    source="chat_extraction",
+                    namespace="chat:usuario",  # default, clasificador lo actualiza
+                )
+                logger.info(f"Memoria guardada: [{mem.get('type')}] {mem['content'][:60]}")
+                # Clasificar en background — no bloquea el chat
+                asyncio.create_task(
+                    self._classify_and_update_namespace(stored.id, mem["content"])
+                )
+        except Exception as e:
+            logger.warning(f"Error extrayendo memoria (no crítico): {e}")
+
+    async def _classify_and_update_namespace(self, memory_id: str, content: str) -> None:
+        """Clasifica el contenido y actualiza el namespace en BD. Corre en background."""
+        try:
+            namespace = await self._classifier.classify(content)
+            if namespace != "chat:usuario":  # solo actualizar si cambió del default
+                async with self.memory.pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE flash_memories SET namespace = $1 WHERE id = $2",
+                        namespace,
+                        memory_id,
+                    )
+                logger.debug(f"Namespace actualizado: {memory_id[:8]}... → {namespace}")
+        except Exception as e:
+            logger.warning(f"Error clasificando namespace (no crítico): {e}")
+
     async def send_message(
         self,
         user_input: str,
@@ -173,6 +225,8 @@ class ContextualChatService:
                 f"latency={response.latency_ms}ms, "
                 f"memories={len(context['relevant_memories'])}"
             )
+            # Extract and store memorable facts in the background
+            asyncio.create_task(self._extract_and_store(user_input, response.content))
             return response.content
         except Exception as e:
             logger.error(f"Error en chat contextual: {e}")
@@ -197,8 +251,14 @@ class ContextualChatService:
         messages.append(IAMessage(role="user", content=context["user_input"]))
 
         try:
+            full_response = []
             async for chunk in self.ia.chat_stream(messages):
+                full_response.append(chunk)
                 yield chunk
+            # Extract memories from the complete exchange in background
+            asyncio.create_task(
+                self._extract_and_store(user_input, "".join(full_response))
+            )
         except Exception as e:
             logger.error(f"Error en streaming contextual: {e}")
             raise
@@ -206,13 +266,15 @@ class ContextualChatService:
     async def _search_relevant_memories(
         self, user_input: str, limit: int = 5
     ) -> list[Memory]:
-        """Busca memorias semánticamente relevantes al input."""
+        """Busca memorias semánticamente relevantes al input (solo hechos del usuario)."""
         try:
-            embedding = self.embeddings.generate(user_input)
+            loop = asyncio.get_event_loop()
+            embedding = await loop.run_in_executor(None, self.embeddings.generate, user_input)
             return await self.memory.search_semantic(
                 embedding=embedding,
-                threshold=0.5,
+                threshold=0.3,
                 limit=limit,
+                sources=["chat_extraction"],
             )
         except Exception as e:
             logger.warning(f"Error buscando memorias: {e}")

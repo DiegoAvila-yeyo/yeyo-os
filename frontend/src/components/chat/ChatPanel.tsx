@@ -85,11 +85,13 @@ export default function ChatPanel() {
     isStreaming,
     isPanelOpen,
     error,
+    conversationId,
     addMessage,
     updateStreamingMessage,
     finalizeStreamingMessage,
     setStreaming,
     setError,
+    setConversationId,
   } = useChatStore();
 
   const scrollToBottom = useCallback(() => {
@@ -131,10 +133,13 @@ export default function ChatPanel() {
       try {
         abortControllerRef.current = new AbortController();
 
-        const response = await fetch('/api/v1/chat/stream', {
+        const response = await fetch('http://localhost:8000/api/v1/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text.trim() }),
+          body: JSON.stringify({
+            message: text.trim(),
+            conversation_id: conversationId || undefined,
+          }),
           signal: abortControllerRef.current.signal,
         });
 
@@ -173,6 +178,16 @@ export default function ChatPanel() {
             if (line.startsWith('data: ')) {
               const chunk = line.slice(6);
               if (chunk === '[DONE]') continue;
+              // First event carries conv_id metadata
+              if (chunk.startsWith('{"type":"conv_id"')) {
+                try {
+                  const meta = JSON.parse(chunk);
+                  if (meta.type === 'conv_id' && meta.value) {
+                    setConversationId(meta.value);
+                  }
+                } catch {}
+                continue;
+              }
               buffer += chunk;
             }
           }
@@ -189,7 +204,7 @@ export default function ChatPanel() {
         finalizeStreamingMessage(assistantId);
       }
     },
-    [isStreaming, addMessage, updateStreamingMessage, finalizeStreamingMessage, setStreaming, setError]
+    [isStreaming, conversationId, addMessage, updateStreamingMessage, finalizeStreamingMessage, setStreaming, setError, setConversationId]
   );
 
   const handleSubmit = (e: FormEvent) => {

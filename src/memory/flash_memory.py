@@ -46,6 +46,7 @@ class FlashMemory:
         metadata: Optional[dict] = None,
         embedding: Optional[list[float]] = None,
         source: str = "user",
+        namespace: str = "chat:usuario",
     ) -> Memory:
         """
         Almacena una nueva memoria en Flash Memory.
@@ -56,31 +57,35 @@ class FlashMemory:
 
         async with self.pool.acquire() as conn:
             if embedding:
+                # Format as pgvector literal: '[0.1,0.2,...]'
+                vector_str = "[" + ",".join(str(x) for x in embedding) + "]"
                 row = await conn.fetchrow(
                     """
-                    INSERT INTO flash_memories (content, type, metadata, embedding, source)
-                    VALUES ($1, $2, $3, $4, $5)
+                    INSERT INTO flash_memories (content, type, metadata, embedding, source, namespace)
+                    VALUES ($1, $2, $3, $4::vector, $5, $6)
                     RETURNING id, content, type, tier, checksum, access_count,
-                              metadata, source, created_at, accessed_at, updated_at
+                              metadata, source, namespace, created_at, accessed_at, updated_at
                     """,
                     content,
                     type,
                     json.dumps(metadata),
-                    str(embedding),
+                    vector_str,
                     source,
+                    namespace,
                 )
             else:
                 row = await conn.fetchrow(
                     """
-                    INSERT INTO flash_memories (content, type, metadata, source)
-                    VALUES ($1, $2, $3, $4)
+                    INSERT INTO flash_memories (content, type, metadata, source, namespace)
+                    VALUES ($1, $2, $3, $4, $5)
                     RETURNING id, content, type, tier, checksum, access_count,
-                              metadata, source, created_at, accessed_at, updated_at
+                              metadata, source, namespace, created_at, accessed_at, updated_at
                     """,
                     content,
                     type,
                     json.dumps(metadata),
                     source,
+                    namespace,
                 )
 
             await conn.execute(
@@ -104,9 +109,10 @@ class FlashMemory:
             rows = await conn.fetch(
                 """
                 SELECT id, content, type, tier, checksum, access_count,
-                       metadata, source, created_at, accessed_at, updated_at
+                       metadata, source, namespace, created_at, accessed_at, updated_at
                 FROM flash_memories
                 WHERE tier != 'COLD'
+                  AND (metadata->>'invalid') IS NULL
                 ORDER BY access_count DESC, accessed_at DESC
                 LIMIT $1
                 """,
@@ -129,7 +135,7 @@ class FlashMemory:
             rows = await conn.fetch(
                 """
                 SELECT id, content, type, tier, checksum, access_count,
-                       metadata, source, created_at, accessed_at, updated_at
+                       metadata, source, namespace, created_at, accessed_at, updated_at
                 FROM flash_memories
                 WHERE type = $1
                 ORDER BY accessed_at DESC
@@ -150,7 +156,7 @@ class FlashMemory:
                 SET accessed_at = NOW(), access_count = access_count + 1
                 WHERE id = $1
                 RETURNING id, content, type, tier, checksum, access_count,
-                          metadata, source, created_at, accessed_at, updated_at
+                          metadata, source, namespace, created_at, accessed_at, updated_at
                 """,
                 mid,
             )
@@ -161,31 +167,55 @@ class FlashMemory:
     async def search_semantic(
         self,
         embedding: list[float],
-        threshold: float = 0.7,
+        threshold: float = 0.5,
         limit: int = 5,
+        sources: list[str] | None = None,
     ) -> list[Memory]:
         """
         Búsqueda semántica usando pgvector con cosine similarity.
         Solo retorna memorias cuya similitud >= threshold.
+        sources: lista de fuentes a incluir (ej: ['chat_extraction']). None = todas.
         Fallback: retorna memorias recientes si pgvector no está disponible.
         """
+        vector_str = "[" + ",".join(str(x) for x in embedding) + "]"
         try:
             async with self.pool.acquire() as conn:
-                rows = await conn.fetch(
-                    """
-                    SELECT id, content, type, tier, checksum, access_count,
-                           metadata, source, created_at, accessed_at, updated_at,
-                           1 - (embedding <=> $1::vector) AS similarity
-                    FROM flash_memories
-                    WHERE embedding IS NOT NULL
-                      AND 1 - (embedding <=> $1::vector) >= $2
-                    ORDER BY embedding <=> $1::vector
-                    LIMIT $3
-                    """,
-                    str(embedding),
-                    threshold,
-                    limit,
-                )
+                if sources:
+                    rows = await conn.fetch(
+                        """
+                        SELECT id, content, type, tier, checksum, access_count,
+                               metadata, source, namespace, created_at, accessed_at, updated_at,
+                               1 - (embedding <=> $1::vector) AS similarity
+                        FROM flash_memories
+                        WHERE embedding IS NOT NULL
+                          AND (metadata->>'invalid') IS NULL
+                          AND source = ANY($4::text[])
+                          AND 1 - (embedding <=> $1::vector) >= $2
+                        ORDER BY embedding <=> $1::vector
+                        LIMIT $3
+                        """,
+                        vector_str,
+                        threshold,
+                        limit,
+                        sources,
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """
+                        SELECT id, content, type, tier, checksum, access_count,
+                               metadata, source, namespace, created_at, accessed_at, updated_at,
+                               1 - (embedding <=> $1::vector) AS similarity
+                        FROM flash_memories
+                        WHERE embedding IS NOT NULL
+                          AND (metadata->>'invalid') IS NULL
+                          AND 1 - (embedding <=> $1::vector) >= $2
+                        ORDER BY embedding <=> $1::vector
+                        LIMIT $3
+                        """,
+                        vector_str,
+                        threshold,
+                        limit,
+                    )
                 for row in rows:
                     await conn.execute(
                         """
@@ -222,7 +252,7 @@ class FlashMemory:
                 SET tier = $1, updated_at = NOW()
                 WHERE id = $2
                 RETURNING id, content, type, tier, checksum, access_count,
-                          metadata, source, created_at, accessed_at, updated_at
+                          metadata, source, namespace, created_at, accessed_at, updated_at
                 """,
                 new_tier,
                 mid,
@@ -262,7 +292,7 @@ class FlashMemory:
                 SET tier = $1, updated_at = NOW()
                 WHERE id = $2
                 RETURNING id, content, type, tier, checksum, access_count,
-                          metadata, source, created_at, accessed_at, updated_at
+                          metadata, source, namespace, created_at, accessed_at, updated_at
                 """,
                 new_tier,
                 mid,
@@ -329,6 +359,7 @@ class FlashMemory:
             access_count=row["access_count"],
             metadata=metadata if metadata else {},
             source=row["source"],
+            namespace=row.get("namespace", "chat:usuario"),
             created_at=row["created_at"],
             accessed_at=row["accessed_at"],
             updated_at=row["updated_at"],

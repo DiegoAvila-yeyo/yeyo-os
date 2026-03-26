@@ -18,7 +18,6 @@ from typing import Optional
 from src.memory.tier_manager import TierManager
 from src.memory.cache import MemoryCache
 from src.memory.flash_memory import FlashMemory
-from src.ia.embeddings import EmbeddingService
 
 logger = logging.getLogger("yeyoos.background")
 
@@ -40,7 +39,7 @@ class BackgroundTaskManager:
         tier_manager: Optional[TierManager] = None,
         cache: Optional[MemoryCache] = None,
         flash_memory: Optional[FlashMemory] = None,
-        embeddings: Optional[EmbeddingService] = None,
+        embeddings=None,  # EmbeddingService or OllamaEmbeddingService
     ):
         self.tier_manager = tier_manager
         self.cache = cache
@@ -204,13 +203,14 @@ class BackgroundTaskManager:
 
             async with self.memory.pool.acquire() as conn:
                 for row, embedding in zip(rows, embeddings):
+                    vec_str = "[" + ",".join(str(x) for x in embedding) + "]"
                     await conn.execute(
                         """
                         UPDATE flash_memories
-                        SET embedding = $1
+                        SET embedding = $1::vector
                         WHERE id = $2
                         """,
-                        str(embedding),
+                        vec_str,
                         row["id"],
                     )
 

@@ -24,7 +24,7 @@ class YeyoConfig(BaseSettings):
     # === Ollama ===
     ollama_host: str = Field(default="http://localhost:11434", description="Host de Ollama API")
     ollama_model: str = Field(default="qwen2.5:3b", description="Modelo de Ollama por defecto")
-    ollama_embedding_model: str = Field(default="nomic-embed-text", description="Modelo de embeddings")
+    ollama_embedding_model: str = Field(default="qwen2.5-coder:7b", description="Modelo de embeddings")
     ollama_timeout: float = Field(default=120.0, description="Timeout en segundos para llamadas a Ollama", ge=1.0)
 
     # === GPU ===

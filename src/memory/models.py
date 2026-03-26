@@ -20,6 +20,7 @@ class Memory(BaseModel):
     access_count: int = 0
     metadata: dict = Field(default_factory=dict)
     source: str = "user"
+    namespace: str = "chat:usuario"
     created_at: Optional[datetime] = None
     accessed_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

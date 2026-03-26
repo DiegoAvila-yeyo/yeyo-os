@@ -11,6 +11,7 @@ Endpoints REST para funcionalidad de chat:
 - POST /api/v1/chat/{message_id}/feedback — enviar feedback
 """
 
+import json
 import logging
 import uuid
 from typing import Optional
@@ -163,6 +164,9 @@ async def send_message_stream(
         await conv_manager.add_message(conv_id, "user", request.message)
 
         async def event_generator():
+            # First event: send conversation_id so frontend can persist it
+            yield f"data: {json.dumps({'type': 'conv_id', 'value': conv_id}, separators=(',', ':'))}\n\n"
+
             full_response = []
             async for chunk in chat_service.send_message_stream(
                 user_input=request.message,

@@ -35,18 +35,25 @@ class ChatService:
         self.ia = ia_provider
         self.system_prompt = system_prompt
 
-    async def send_message(self, user_input: str) -> str:
+    async def send_message(
+        self,
+        user_input: str,
+        conversation_history: list[dict] = None,
+        conversation_id: str = "",
+    ) -> str:
         """
         Envía un mensaje al modelo y retorna la respuesta completa.
-        Incluye system prompt automáticamente.
         """
         if not user_input or not user_input.strip():
             return "No recibí ningún mensaje. ¿En qué puedo ayudarte?"
 
-        messages = [
-            IAMessage(role="system", content=self.system_prompt),
-            IAMessage(role="user", content=user_input.strip()),
-        ]
+        messages = [IAMessage(role="system", content=self.system_prompt)]
+
+        if conversation_history:
+            for msg in conversation_history:
+                messages.append(IAMessage(role=msg["role"], content=msg["content"]))
+
+        messages.append(IAMessage(role="user", content=user_input.strip()))
 
         try:
             response: IAResponse = await self.ia.chat(messages)
@@ -59,19 +66,27 @@ class ChatService:
             logger.error(f"Error en chat: {e}")
             raise
 
-    async def send_message_stream(self, user_input: str) -> AsyncIterator[str]:
+    async def send_message_stream(
+        self,
+        user_input: str,
+        conversation_history: list[dict] = None,
+        conversation_id: str = "",
+    ) -> AsyncIterator[str]:
         """
         Envía un mensaje y retorna la respuesta en streaming.
-        Yield de chunks de texto conforme llegan del modelo.
+        Acepta conversation_history para compatibilidad con la ruta de streaming.
         """
         if not user_input or not user_input.strip():
             yield "No recibí ningún mensaje. ¿En qué puedo ayudarte?"
             return
 
-        messages = [
-            IAMessage(role="system", content=self.system_prompt),
-            IAMessage(role="user", content=user_input.strip()),
-        ]
+        messages = [IAMessage(role="system", content=self.system_prompt)]
+
+        if conversation_history:
+            for msg in conversation_history:
+                messages.append(IAMessage(role=msg["role"], content=msg["content"]))
+
+        messages.append(IAMessage(role="user", content=user_input.strip()))
 
         try:
             async for chunk in self.ia.chat_stream(messages):

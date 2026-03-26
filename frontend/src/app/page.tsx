@@ -27,7 +27,11 @@ import { KillSwitchOverlay } from '@/components/security/KillSwitchOverlay';
 import { useChatStore } from '@/lib/store/chat-store';
 
 // Node workspaces
-import { ImageNodeLayout } from '@/components/nodes/ImageNodeLayout';
+import {
+  ImageNodeLayout,
+  type ChatMessage as ImageChatMessage,
+  type ImageGenerada,
+} from '@/components/nodes/ImageNodeLayout';
 import { VideoNodeLayout } from '@/components/nodes/VideoNodeLayout';
 import { CodeNodeLayout } from '@/components/nodes/CodeNodeLayout';
 import { AutomationNodeLayout } from '@/components/nodes/AutomationNodeLayout';
@@ -46,7 +50,21 @@ const NODOS_HUB: NodoLibreInfo[] = [
 type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | null;
 
 // ─── Workspace Router ──────────────────────────────────────────────────────────
-function WorkspaceRouter({ nodeId, onClose }: { nodeId: WorkspaceId; onClose: () => void }) {
+function WorkspaceRouter({
+  nodeId,
+  onClose,
+  imageMessages,
+  imageGallery,
+  onImageChatSend,
+  onImageAssistantMessage,
+}: {
+  nodeId: WorkspaceId;
+  onClose: () => void;
+  imageMessages: ImageChatMessage[];
+  imageGallery: ImageGenerada[];
+  onImageChatSend: (mensaje: string) => void;
+  onImageAssistantMessage: (mensaje: string) => void;
+}) {
   if (!nodeId) return null;
 
   const closeButton = (
@@ -68,7 +86,15 @@ function WorkspaceRouter({ nodeId, onClose }: { nodeId: WorkspaceId; onClose: ()
   );
 
   switch (nodeId) {
-    case 'imagen':     return wrapper(<ImageNodeLayout />);
+    case 'imagen':
+      return wrapper(
+        <ImageNodeLayout
+          imagenes={imageGallery}
+          chatMessages={imageMessages}
+          onChatSend={onImageChatSend}
+          onAssistantMessage={onImageAssistantMessage}
+        />
+      );
     case 'video':      return wrapper(<VideoNodeLayout />);
     case 'codigo':     return wrapper(<CodeNodeLayout />);
     case 'automacion': return wrapper(<AutomationNodeLayout />);
@@ -82,6 +108,8 @@ function HubPrincipal() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(null);
   const [tabs, setTabs] = useState<TabInfo[]>([]);
+  const [imageMessages, setImageMessages] = useState<ImageChatMessage[]>([]);
+  const [imageGallery, setImageGallery] = useState<ImageGenerada[]>([]);
 
   const WORKSPACE_LABELS: Record<string, { label: string; icono: string }> = {
     imagen:     { label: 'Imagen',      icono: '🖼️' },
@@ -136,6 +164,28 @@ function HubPrincipal() {
     id: n.id, label: n.label, icono: n.icono, estado: 'idle',
   }));
 
+  const appendImageMessage = useCallback((role: 'user' | 'assistant', content: string) => {
+    setImageMessages(prev => ([
+      ...prev,
+      {
+        id: `image-chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        role,
+        content,
+      },
+    ]));
+  }, []);
+
+  // ImageNodeLayout handles ALL generation directly to localhost:8000 (no proxy).
+  // page.tsx only manages chat message display.
+
+  const handleImageChatSend = useCallback((mensaje: string) => {
+    appendImageMessage('user', mensaje);
+  }, [appendImageMessage]);
+
+  const handleImageAssistantMessage = useCallback((mensaje: string) => {
+    appendImageMessage('assistant', mensaje);
+  }, [appendImageMessage]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: '#0a0a0f', overflow: 'hidden' }}>
       {/* TOPBAR */}
@@ -162,6 +212,10 @@ function HubPrincipal() {
             <WorkspaceRouter
               nodeId={activeWorkspace}
               onClose={() => activeWorkspace && cerrarTab(activeWorkspace)}
+              imageMessages={imageMessages}
+              imageGallery={imageGallery}
+              onImageChatSend={handleImageChatSend}
+              onImageAssistantMessage={handleImageAssistantMessage}
             />
           ) : (
             /* HUB libre — FreeCanvas con pan/zoom */

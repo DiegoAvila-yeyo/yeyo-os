@@ -26,6 +26,9 @@ from src.core.config import get_config
 from src.ia.ollama_provider import OllamaProvider
 from src.ia.ollama_embeddings import OllamaEmbeddingService
 from src.memory.flash_memory import FlashMemory
+from src.memory.cache import MemoryCache
+from src.memory.tier_manager import TierManager
+from src.core.background import BackgroundTaskManager
 from src.chat.conversation import ConversationManager
 from src.chat.feedback import FeedbackService
 from src.api.websocket import manager
@@ -33,6 +36,7 @@ from src.api.tts import router as tts_router
 from src.api.routes.chat import router as chat_router
 from src.api.routes.memory import router as memory_router
 from src.api.routes.packages import router as packages_router, init_package_services
+from src.api.routes.media import router as media_router
 
 logger = logging.getLogger("yeyoos.api")
 
@@ -46,6 +50,9 @@ _feedback_service: FeedbackService | None = None
 _chat_service = None  # ChatService o ContextualChatService
 _embedding_service: OllamaEmbeddingService | None = None
 _association_engine = None
+_memory_cache: MemoryCache | None = None
+_tier_manager: TierManager | None = None
+_background_manager: BackgroundTaskManager | None = None
 
 
 @asynccontextmanager
@@ -53,6 +60,7 @@ async def lifespan(app: FastAPI):
     """Startup: conectar todos los servicios. Shutdown: cerrar conexiones."""
     global _start_time, _ia_provider, _flash_memory, _conv_manager
     global _feedback_service, _chat_service, _embedding_service, _association_engine
+    global _memory_cache, _tier_manager, _background_manager
 
     _start_time = time.time()
     config = get_config()
@@ -100,6 +108,31 @@ async def lifespan(app: FastAPI):
     except ImportError:
         logger.warning("  AssociationEngine no disponible (falta sentence-transformers)")
 
+    # 4b. MemoryCache (Redis HOT tier)
+    try:
+        _memory_cache = MemoryCache()
+        await _memory_cache.connect()
+        cache_ok = await _memory_cache.health_check()
+        logger.info(f"  Redis MemoryCache: {'✅' if cache_ok else '❌ (modo degradado)'}")
+    except Exception as e:
+        logger.warning(f"  Redis MemoryCache: ❌ ({e}) — sin cache HOT")
+        _memory_cache = None
+
+    # 4c. TierManager
+    if _flash_memory and _memory_cache:
+        _tier_manager = TierManager(_flash_memory, _memory_cache)
+        logger.info("  TierManager: ✅")
+
+    # 4d. BackgroundTaskManager
+    _background_manager = BackgroundTaskManager(
+        tier_manager=_tier_manager,
+        cache=_memory_cache,
+        flash_memory=_flash_memory,
+        embeddings=_embedding_service,
+    )
+    await _background_manager.start()
+    logger.info(f"  BackgroundTaskManager: ✅ ({_background_manager.task_count} tareas)")
+
     # 5. Chat contextual (con memoria)
     try:
         from src.chat.contextual_service import ContextualChatService
@@ -128,6 +161,10 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("🔴 YeyoOS Backend cerrando...")
+    if _background_manager:
+        await _background_manager.stop()
+    if _memory_cache:
+        await _memory_cache.disconnect()
     if _ia_provider:
         await _ia_provider.close()
     if pool:
@@ -183,6 +220,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
+    expose_headers=["X-Conversation-Id"],
 )
 
 
@@ -255,6 +293,7 @@ app.include_router(tts_router)
 app.include_router(chat_router)
 app.include_router(memory_router)
 app.include_router(packages_router)
+app.include_router(media_router)
 
 
 # ========== WebSocket ==========

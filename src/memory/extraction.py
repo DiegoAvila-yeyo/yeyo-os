@@ -19,17 +19,22 @@ from src.ia.interfaces import IAProvider, IAMessage
 logger = logging.getLogger("yeyoos.extraction")
 
 # Tokens mínimos para intentar extracción
-MIN_TOKENS_FOR_EXTRACTION = 20
+MIN_TOKENS_FOR_EXTRACTION = 5
 
-EXTRACTION_PROMPT = """Analiza el siguiente intercambio de conversación y extrae información memorable.
+EXTRACTION_PROMPT = """Analiza el siguiente intercambio de conversación y extrae información memorable del USUARIO.
 
 Mensaje del usuario: {user_message}
-Respuesta del asistente: {assistant_message}
+Respuesta del asistente (SOLO contexto, NO extraer de aquí): {assistant_message}
 
-Extrae SOLO información personal o relevante. Tipos válidos:
+Extrae SOLO información personal o relevante que EL USUARIO diga explícitamente. Tipos válidos:
 - "preference": gustos, preferencias del usuario (ej: "me gusta Python", "prefiero modo oscuro")
 - "fact": hechos sobre el usuario (ej: "mi nombre es Diego", "trabajo en empresa X", "tengo un gato")
 - "correction": correcciones del usuario (ej: "no, mi nombre no es Juan, es Diego")
+
+Reglas ESTRICTAS:
+- SOLO extrae lo que el USUARIO dice, NUNCA lo que dice el asistente
+- NUNCA extraigas negaciones o incertidumbre como hechos (ej: "no sé", "no tengo información")
+- Solo información POSITIVA y EXPLÍCITA del usuario
 
 Responde SOLO con un JSON array. Si no hay nada memorable, responde con [].
 Formato:
@@ -37,7 +42,7 @@ Formato:
   {{"content": "descripción concisa de la memoria", "type": "preference|fact|correction", "metadata": {{"original_text": "texto original del usuario"}}}}
 ]
 
-IMPORTANTE: Solo extrae información CLARA y EXPLÍCITA. No inventes ni asumas.
+IMPORTANTE: Solo extrae información CLARA y EXPLÍCITA del usuario. No inventes ni asumas.
 Responde SOLO con el JSON, sin texto adicional."""
 
 
@@ -105,7 +110,8 @@ class MemoryExtractor:
         # Indicadores de información personal (heurística rápida)
         personal_indicators = [
             "me llamo", "mi nombre", "soy ", "trabajo en", "vivo en",
-            "me gusta", "prefiero", "mi favorit", "no me gusta",
+            "me gusta", "prefiero", "mi favorit", "favorito", "favorita",
+            "no me gusta", "recuerda que", "recuerda",
             "mi edad", "tengo ", "mi correo", "mi email",
             "no, ", "en realidad", "corrección", "error",
             "siempre ", "nunca ", "odio ", "amo ",

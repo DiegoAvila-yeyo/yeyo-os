@@ -65,7 +65,7 @@ class TestShouldExtract:
 
     @pytest.mark.asyncio
     async def test_min_tokens_threshold(self):
-        assert MIN_TOKENS_FOR_EXTRACTION == 20
+        assert MIN_TOKENS_FOR_EXTRACTION == 5
 
 
 class TestExtractFromMessage:

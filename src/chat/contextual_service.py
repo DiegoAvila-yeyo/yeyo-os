@@ -150,36 +150,33 @@ class ContextualChatService:
         return context
 
     async def _extract_and_store(self, user_input: str, assistant_response: str) -> None:
-        """Extracts memorable facts from the exchange and stores them in Flash Memory."""
+        """Guarda el mensaje del usuario directamente en Flash Memory."""
         try:
-            should = await self._extractor.should_extract(user_input)
-            if not should:
-                return
-            memories = await self._extractor.extract_from_message(user_input, assistant_response)
-            for mem in memories:
-                embedding = None
-                try:
-                    loop = asyncio.get_event_loop()
-                    embedding = await loop.run_in_executor(
-                        None, self.embeddings.generate, mem["content"]
+            stored = await self._extractor.extract_and_store(
+                user_message=user_input,
+                flash_memory=self.memory,
+                embedding_service=self.embeddings,
+                namespace="chat:usuario",  # default, clasificador lo actualiza
+            )
+            if stored:
+                memory_id = None
+                # Obtener el ID de la memoria recién guardada para clasificar
+                async with self.memory.pool.acquire() as conn:
+                    row = await conn.fetchrow(
+                        """SELECT id FROM flash_memories
+                           WHERE content = $1 AND source = 'chat_extraction'
+                           ORDER BY created_at DESC LIMIT 1""",
+                        user_input,
                     )
-                except Exception:
-                    pass
-                stored = await self.memory.store(
-                    content=mem["content"],
-                    type=mem.get("type", "fact"),
-                    metadata=mem.get("metadata", {}),
-                    embedding=embedding,
-                    source="chat_extraction",
-                    namespace="chat:usuario",  # default, clasificador lo actualiza
-                )
-                logger.info(f"Memoria guardada: [{mem.get('type')}] {mem['content'][:60]}")
-                # Clasificar en background — no bloquea el chat
-                asyncio.create_task(
-                    self._classify_and_update_namespace(stored.id, mem["content"])
-                )
+                    if row:
+                        memory_id = str(row["id"])
+
+                if memory_id:
+                    asyncio.create_task(
+                        self._classify_and_update_namespace(memory_id, user_input)
+                    )
         except Exception as e:
-            logger.warning(f"Error extrayendo memoria (no crítico): {e}")
+            logger.warning(f"Error guardando memoria (no crítico): {e}")
 
     async def _classify_and_update_namespace(self, memory_id: str, content: str) -> None:
         """Clasifica el contenido y actualiza el namespace en BD. Corre en background."""
@@ -274,7 +271,7 @@ class ContextualChatService:
                 embedding=embedding,
                 threshold=0.3,
                 limit=limit,
-                sources=["chat_extraction"],
+                namespaces=["chat:usuario"],
             )
         except Exception as e:
             logger.warning(f"Error buscando memorias: {e}")

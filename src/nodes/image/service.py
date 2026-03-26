@@ -127,16 +127,30 @@ class ImageGenerationNode(NodeBase):
     # ═══════════════════════════════════
 
     async def _enhance_prompt(self, prompt: str) -> dict:
-        """Usa Ollama para mejorar el prompt antes de generar."""
+        """Usa Ollama para mejorar el prompt. Inyecta conocimiento de imagen si hay memoria."""
         from src.ia.ollama_provider import OllamaProvider
+
+        # Buscar contexto relevante de imagen:conocimiento + imagen:usuario
+        memory_context = ""
+        if self._memory_service:
+            memory_context = await self._memory_service.get_image_context(prompt, limit=3)
+
+        system = (
+            "You are an expert at writing Stable Diffusion prompts. "
+            "Add details about lighting, composition, style, and quality. "
+            "Keep it under 200 words."
+        )
+        if memory_context:
+            system += (
+                "\n\n[Relevant knowledge — apply these principles]\n"
+                + memory_context
+            )
 
         provider = OllamaProvider()
         response = await provider.generate(
             prompt=f"Enhance this image generation prompt. Make it more detailed and descriptive. "
                     f"Only return the enhanced prompt, nothing else.\n\nOriginal: {prompt}",
-            system="You are an expert at writing Stable Diffusion prompts. "
-                   "Add details about lighting, composition, style, and quality. "
-                   "Keep it under 200 words.",
+            system=system,
             temperature=0.8,
         )
         return {

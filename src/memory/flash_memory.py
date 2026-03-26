@@ -169,18 +169,39 @@ class FlashMemory:
         embedding: list[float],
         threshold: float = 0.5,
         limit: int = 5,
-        sources: list[str] | None = None,
+        namespaces: list[str] | None = None,
+        sources: list[str] | None = None,  # deprecated: usar namespaces
     ) -> list[Memory]:
         """
         Búsqueda semántica usando pgvector con cosine similarity.
         Solo retorna memorias cuya similitud >= threshold.
-        sources: lista de fuentes a incluir (ej: ['chat_extraction']). None = todas.
+        namespaces: lista de namespaces a incluir (ej: ['chat:usuario', 'codigo:usuario']). None = todos.
+        sources: deprecated, ignorado si namespaces está presente.
         Fallback: retorna memorias recientes si pgvector no está disponible.
         """
         vector_str = "[" + ",".join(str(x) for x in embedding) + "]"
         try:
             async with self.pool.acquire() as conn:
-                if sources:
+                if namespaces:
+                    rows = await conn.fetch(
+                        """
+                        SELECT id, content, type, tier, checksum, access_count,
+                               metadata, source, namespace, created_at, accessed_at, updated_at,
+                               1 - (embedding <=> $1::vector) AS similarity
+                        FROM flash_memories
+                        WHERE embedding IS NOT NULL
+                          AND (metadata->>'invalid') IS NULL
+                          AND namespace = ANY($4::text[])
+                          AND 1 - (embedding <=> $1::vector) >= $2
+                        ORDER BY embedding <=> $1::vector
+                        LIMIT $3
+                        """,
+                        vector_str,
+                        threshold,
+                        limit,
+                        namespaces,
+                    )
+                elif sources:
                     rows = await conn.fetch(
                         """
                         SELECT id, content, type, tier, checksum, access_count,

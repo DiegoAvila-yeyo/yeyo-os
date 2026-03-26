@@ -88,12 +88,14 @@ async def search_memories(
     q: str = Query(..., min_length=1, description="Texto de búsqueda"),
     limit: int = Query(5, ge=1, le=50),
     threshold: float = Query(0.5, ge=0.0, le=1.0),
+    namespace: str | None = Query(None, description="Filtrar por namespace (ej: chat:usuario, codigo:usuario)"),
     flash_memory=Depends(get_flash_memory),
     embedding_service=Depends(get_embedding_service),
 ):
     """
     Búsqueda semántica en Flash Memory.
     Usa embeddings para encontrar memorias similares al query.
+    Opcional: filtrar por namespace con ?namespace=chat:usuario
     """
     try:
         embedding = embedding_service.generate(q)
@@ -101,6 +103,7 @@ async def search_memories(
             embedding=embedding,
             threshold=threshold,
             limit=limit,
+            namespaces=[namespace] if namespace else None,
         )
 
         results = [

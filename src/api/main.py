@@ -176,6 +176,7 @@ def _wire_dependencies():
     """Inyecta los servicios reales en los routers via FastAPI dependency_overrides."""
     from src.api.routes.chat import get_chat_service, get_conversation_manager, get_feedback_service
     from src.api.routes.memory import get_flash_memory, get_embedding_service, get_association_engine
+    from src.api.routes.nodes import get_node_memory_service
 
     # Chat dependencies
     async def _real_chat_service():
@@ -204,6 +205,16 @@ def _wire_dependencies():
     app.dependency_overrides[get_flash_memory] = _real_flash_memory
     app.dependency_overrides[get_embedding_service] = _real_embedding_service
     app.dependency_overrides[get_association_engine] = _real_association_engine
+
+    # Node memory service
+    if _flash_memory and _embedding_service:
+        from src.memory.node_memory import NodeMemoryService
+        _node_memory = NodeMemoryService(_flash_memory, _embedding_service)
+
+        async def _real_node_memory_service():
+            return _node_memory
+
+        app.dependency_overrides[get_node_memory_service] = _real_node_memory_service
 
 
 app = FastAPI(

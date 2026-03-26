@@ -91,13 +91,15 @@ class MemoriaProvider(ABC):
     @abstractmethod
     async def search_semantic(
         self,
-        query: str,
+        embedding: list[float],
         threshold: float = 0.7,
         limit: int = 5,
+        namespaces: list[str] | None = None,
     ) -> list[Memory]:
         """
         Búsqueda puramente semántica via embeddings pgvector.
         threshold: similitud mínima (0.0 a 1.0).
+        namespaces: filtrar por namespace(s). None = todos.
         """
         ...
 

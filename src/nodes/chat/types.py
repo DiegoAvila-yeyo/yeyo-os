@@ -119,6 +119,8 @@ class ChatNodeOutput:
             raise TypeError(f"suggestions must be list, got {type(self.suggestions)}")
         if not isinstance(self.tokens_used, int):
             raise TypeError(f"tokens_used must be int, got {type(self.tokens_used)}")
+        if self.tokens_used < 0:
+            raise ValueError(f"tokens_used must be non-negative, got {self.tokens_used}")
 
 
 @dataclass

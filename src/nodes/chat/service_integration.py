@@ -39,8 +39,12 @@ from src.nodes.chat.exceptions import (
     OllamaUnreachableError,
     OllamaTimeoutError,
     OllamaError,
+    OllamaOutOfMemoryError,
+    OllamaInvalidResponseError,
     OutputValidationError,
+    InvalidConfidenceError,
     MemoryInjectionError,
+    DatabaseError,
     InternalServerError,
     RateLimitExceededError,
     RequestTimeoutError,
@@ -225,6 +229,24 @@ class ChatNodeService:
                 user_id=user_id,
             )
         
+        except SystemPromptGenerationError as e:
+            self._logger.error(f"System prompt generation failed: {e}")
+            return ChatNodeError(
+                error="Failed to generate system prompt. Please try again.",
+                error_code=ErrorCode.ERROR_SYSTEM_PROMPT_GENERATION,
+                conversation_id=conversation_id,
+                user_id=user_id,
+            )
+        
+        except AgentValidationError as e:
+            self._logger.error(f"Agent validation failed: {e}")
+            return ChatNodeError(
+                error="Agent validation failed. Please try again.",
+                error_code=ErrorCode.ERROR_AGENT_VALIDATION_FAILED,
+                conversation_id=conversation_id,
+                user_id=user_id,
+            )
+        
         except OllamaTimeoutError as e:
             self._logger.error(f"Ollama timeout: {e}")
             return ChatNodeError(
@@ -239,6 +261,57 @@ class ChatNodeService:
             return ChatNodeError(
                 error="Service temporarily unavailable. Please try again.",
                 error_code=ErrorCode.ERROR_OLLAMA_UNREACHABLE,
+                conversation_id=conversation_id,
+                user_id=user_id,
+            )
+        
+        except OllamaError as e:
+            self._logger.error(f"Ollama error ({type(e).__name__}): {e}")
+            if isinstance(e, OllamaOutOfMemoryError):
+                return ChatNodeError(
+                    error="Service out of memory. Please try again later.",
+                    error_code=ErrorCode.ERROR_OLLAMA_OUT_OF_MEMORY,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                )
+            elif isinstance(e, OllamaInvalidResponseError):
+                return ChatNodeError(
+                    error="Invalid response from service. Please try again.",
+                    error_code=ErrorCode.ERROR_OLLAMA_INVALID_RESPONSE,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                )
+            else:
+                return ChatNodeError(
+                    error="Service error occurred. Please try again.",
+                    error_code=ErrorCode.ERROR_OLLAMA_UNREACHABLE,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                )
+        
+        except InvalidConfidenceError as e:
+            self._logger.error(f"Invalid confidence score: {e}")
+            return ChatNodeError(
+                error="Internal error occurred. Please try again.",
+                error_code=ErrorCode.ERROR_INVALID_CONFIDENCE,
+                conversation_id=conversation_id,
+                user_id=user_id,
+            )
+        
+        except DatabaseError as e:
+            self._logger.error(f"Database error: {e}")
+            return ChatNodeError(
+                error="System error occurred. Please try again.",
+                error_code=ErrorCode.ERROR_DATABASE,
+                conversation_id=conversation_id,
+                user_id=user_id,
+            )
+        
+        except RequestTimeoutError as e:
+            self._logger.error(f"Request timeout: {e}")
+            return ChatNodeError(
+                error="Request took too long. Please try again.",
+                error_code=ErrorCode.ERROR_REQUEST_TIMEOUT,
                 conversation_id=conversation_id,
                 user_id=user_id,
             )
@@ -424,8 +497,8 @@ class ChatNodeService:
         
         Retry strategy: exponential backoff
         - Attempt 1: immediate
-        - Attempt 2: 2 seconds
-        - Attempt 3: 4 seconds
+        - Attempt 2: after 1 second
+        - Attempt 3: after 2 seconds
         
         Args:
             system_prompt: System prompt for Ollama
@@ -460,11 +533,11 @@ class ChatNodeService:
                     self._logger.debug(f"Attempt {attempt} timed out, retrying in {wait_time}s")
                     await asyncio.sleep(wait_time)
                     
-            except OllamaUnreachableError:
+            except OllamaError as e:
                 if attempt == self.OLLAMA_RETRY_ATTEMPTS:
                     raise
                 wait_time = self.OLLAMA_RETRY_BACKOFF_FACTOR ** (attempt - 1)
-                self._logger.debug(f"Ollama unreachable, retrying in {wait_time}s")
+                self._logger.debug(f"Ollama error: {type(e).__name__}, retrying in {wait_time}s")
                 await asyncio.sleep(wait_time)
     
     async def _do_ollama_call(

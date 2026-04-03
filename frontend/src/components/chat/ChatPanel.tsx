@@ -85,11 +85,13 @@ export default function ChatPanel() {
     isStreaming,
     isPanelOpen,
     error,
+    conversationId,
     addMessage,
     updateStreamingMessage,
     finalizeStreamingMessage,
     setStreaming,
     setError,
+    setConversationId,
   } = useChatStore();
 
   const scrollToBottom = useCallback(() => {
@@ -134,7 +136,10 @@ export default function ChatPanel() {
         const response = await fetch('/api/v1/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text.trim() }),
+          body: JSON.stringify({ 
+            message: text.trim(),
+            conversation_id: conversationId,
+          }),
           signal: abortControllerRef.current.signal,
         });
 
@@ -150,6 +155,7 @@ export default function ChatPanel() {
         let fullContent = '';
         let flushTimer: ReturnType<typeof setTimeout> | null = null;
         let pendingChunks = '';
+        let newConversationId: string | null = null;
 
         const flushBuffer = () => {
           if (buffer) {
@@ -172,6 +178,16 @@ export default function ChatPanel() {
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const chunk = line.slice(6);
+              
+              // Handle metadata chunks (conversation_id, etc)
+              if (chunk.startsWith('METADATA:')) {
+                const parts = chunk.split(':');
+                if (parts[1] === 'conversation_id' && parts[2]) {
+                  newConversationId = parts[2];
+                }
+                continue;
+              }
+              
               if (chunk === '[DONE]') continue;
               buffer += chunk;
             }
@@ -182,6 +198,12 @@ export default function ChatPanel() {
 
         if (flushTimer) clearTimeout(flushTimer);
         flushBuffer();
+        
+        // Save conversation ID if received from server
+        if (newConversationId && !conversationId) {
+          setConversationId(newConversationId);
+        }
+        
         finalizeStreamingMessage(assistantId);
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
@@ -189,7 +211,7 @@ export default function ChatPanel() {
         finalizeStreamingMessage(assistantId);
       }
     },
-    [isStreaming, addMessage, updateStreamingMessage, finalizeStreamingMessage, setStreaming, setError]
+    [isStreaming, addMessage, updateStreamingMessage, finalizeStreamingMessage, setStreaming, setError, conversationId, setConversationId]
   );
 
   const handleSubmit = (e: FormEvent) => {

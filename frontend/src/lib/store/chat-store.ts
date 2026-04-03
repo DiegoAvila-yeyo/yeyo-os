@@ -1,6 +1,8 @@
 /**
  * YeyoOS — Chat Store (Estado del Chat)
  * Micro-fase 3.5 — Capa 3: Cuerpo
+ * 
+ * Phase 3.1.1: Agregado conversation_id persistence para integración con ChatNode
  */
 
 import { create } from 'zustand';
@@ -18,6 +20,7 @@ export interface ChatState {
   isStreaming: boolean;
   isPanelOpen: boolean;
   error: string | null;
+  conversationId: string | null;
 
   addMessage: (message: ChatMessage) => void;
   updateStreamingMessage: (id: string, content: string) => void;
@@ -27,6 +30,7 @@ export interface ChatState {
   togglePanel: () => void;
   setError: (error: string | null) => void;
   clearMessages: () => void;
+  setConversationId: (id: string) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -34,6 +38,7 @@ export const useChatStore = create<ChatState>((set) => ({
   isStreaming: false,
   isPanelOpen: false,
   error: null,
+  conversationId: null,
 
   addMessage: (message) =>
     set((state) => ({ messages: [...state.messages, message] })),
@@ -56,4 +61,5 @@ export const useChatStore = create<ChatState>((set) => ({
   togglePanel: () => set((state) => ({ isPanelOpen: !state.isPanelOpen })),
   setError: (error) => set({ error }),
   clearMessages: () => set({ messages: [] }),
+  setConversationId: (id) => set({ conversationId: id }),
 }));

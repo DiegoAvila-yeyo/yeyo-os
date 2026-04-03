@@ -250,6 +250,9 @@ async def send_message_stream(
                 # Success case: stream response in chunks
                 full_response = result.response
                 
+                # Send conversation_id as first metadata chunk for frontend to capture
+                yield f"data: METADATA:conversation_id:{conv_id}\n\n"
+                
                 # Stream por chunks pequeños para mejor UX
                 chunk_size = 50
                 for i in range(0, len(full_response), chunk_size):

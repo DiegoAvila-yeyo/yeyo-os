@@ -136,6 +136,9 @@ class TestChatNodeAPIIntegration:
         # Should have "data: " prefixes
         assert "data: " in content
         
+        # Should have METADATA chunk with conversation_id
+        assert "METADATA:conversation_id:" in content
+        
         # Should end with [DONE]
         assert "data: [DONE]" in content
     

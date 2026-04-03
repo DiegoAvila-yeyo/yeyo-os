@@ -11,15 +11,20 @@ Endpoints REST para funcionalidad de chat:
 - POST /api/v1/chat/{message_id}/feedback — enviar feedback
 """
 
+import asyncio
 import logging
 import uuid
-from typing import Optional
+from typing import Optional, AsyncGenerator
 
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("yeyoos.api.chat")
+
+# ChatNode integration
+from src.nodes.chat.service_integration import ChatNodeService
+from src.nodes.chat.types import ChatNodeError
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
@@ -149,33 +154,68 @@ async def send_message_stream(
 ):
     """
     Envía un mensaje y recibe la respuesta en streaming (SSE).
+    
+    Phase 3.1.1: Integración con ChatNodeService
+    - Valida entrada
+    - Carga contexto de conversación
+    - Llama Ollama con retry
+    - Valida output
+    - Guarda en memoria
+    - Devuelve streaming SSE en tiempo real
     """
     try:
         conv_id = request.conversation_id
         if not conv_id:
             conv_id = await conv_manager.create_conversation()
 
-        history = await conv_manager.get_history(conv_id, limit=10)
-        history_dicts = [
-            {"role": m.role, "content": m.content} for m in history
-        ]
-
         await conv_manager.add_message(conv_id, "user", request.message)
 
-        async def event_generator():
-            full_response = []
-            async for chunk in chat_service.send_message_stream(
-                user_input=request.message,
-                conversation_history=history_dicts,
-                conversation_id=conv_id,
-            ):
-                full_response.append(chunk)
-                yield f"data: {chunk}\n\n"
-
-            # Guardar respuesta completa
-            complete = "".join(full_response)
-            await conv_manager.add_message(conv_id, "assistant", complete)
-            yield f"data: [DONE]\n\n"
+        async def event_generator() -> AsyncGenerator[str, None]:
+            """
+            SSE generator que llama ChatNodeService y streams la respuesta.
+            Formato: "data: <chunk>\n\n" por línea
+            Termina con: "data: [DONE]\n\n"
+            """
+            chat_node_service = ChatNodeService()
+            full_response = ""
+            
+            try:
+                # Llamar ChatNodeService (Phase 3.1.1)
+                result = await chat_node_service.process_message(
+                    message=request.message,
+                    conversation_id=conv_id,
+                )
+                
+                # Manejar error si ocurrió
+                if isinstance(result, ChatNodeError):
+                    logger.warning(
+                        f"ChatNodeError: {result.error}",
+                        extra={"error_code": result.error_code, "conversation_id": conv_id}
+                    )
+                    yield f"data: ERROR:{result.error_code}:{result.error}\n\n"
+                    yield f"data: [DONE]\n\n"
+                    return
+                
+                # Success case: stream response in chunks
+                full_response = result.response
+                
+                # Stream por chunks pequeños para mejor UX
+                chunk_size = 50
+                for i in range(0, len(full_response), chunk_size):
+                    chunk = full_response[i:i + chunk_size]
+                    yield f"data: {chunk}\n\n"
+                    await asyncio.sleep(0.01)  # Pequeño delay para smooth streaming
+                
+                # Guardar respuesta completa en conversación
+                await conv_manager.add_message(conv_id, "assistant", full_response)
+                
+                # Señal de fin
+                yield f"data: [DONE]\n\n"
+                
+            except Exception as e:
+                logger.error(f"Error en event_generator: {e}", exc_info=True)
+                yield f"data: ERROR:INTERNAL:{str(e)}\n\n"
+                yield f"data: [DONE]\n\n"
 
         return StreamingResponse(
             event_generator(),
@@ -187,7 +227,7 @@ async def send_message_stream(
         )
 
     except Exception as e:
-        logger.error(f"Error en streaming: {e}")
+        logger.error(f"Error en send_message_stream: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

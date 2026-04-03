@@ -10,7 +10,7 @@ Target: 12 comprehensive test cases covering:
 """
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 
 from src.nodes.chat.service_integration import ChatNodeService
 from src.nodes.chat.types import ErrorCode, ValidationResult
@@ -96,7 +96,7 @@ class TestValidateOllamaOutput:
         mock_agent.validate_output = Mock(return_value=(True, ""))
         
         with patch("src.agents.conversation.ConversationAgent", return_value=mock_agent):
-            result = service._validate_ollama_output("Valid response with good content that passes validation")
+            result = service._validate_ollama_output("This is a valid response that should pass")
         
         assert result.is_valid
         mock_agent.validate_output.assert_called_once()
@@ -118,7 +118,7 @@ class TestValidateOllamaOutput:
         mock_agent.validate_output = Mock(side_effect=AgentValidationError("Validation failed"))
         
         with patch("src.agents.conversation.ConversationAgent", return_value=mock_agent):
-            result = service._validate_ollama_output("Response with enough content to pass initial checks but agent fails")
+            result = service._validate_ollama_output("Response")
         
         assert not result.is_valid
         assert result.error_code == ErrorCode.ERROR_AGENT_VALIDATION_FAILED

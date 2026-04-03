@@ -12,7 +12,7 @@ Target: 10 comprehensive test cases covering:
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import AsyncMock, patch
 from datetime import datetime, timedelta, timezone
 
 from src.nodes.chat.service_integration import ChatNodeService
@@ -32,24 +32,23 @@ class TestLoadConversationContext:
     # ═══════════════════════════════════════════════════════════
 
     @pytest.mark.asyncio
-    async def test_load_existing_conversation(self, service):
+    async def test_load_existing_conversation(self, service, mock_get_database, mock_database):
         """Test loading existing conversation."""
-        mock_db = AsyncMock()
-        mock_db.get_conversation = AsyncMock(return_value={
+        mock_database.get_conversation = AsyncMock(return_value={
             "id": "conv-123",
             "message_count": 10,
             "created_at": datetime.now(timezone.utc) - timedelta(hours=1),
         })
-        mock_db.get_messages = AsyncMock(return_value=[
+        mock_database.get_messages = AsyncMock(return_value=[
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi"},
         ])
-        mock_db.get_user_preferences = AsyncMock(return_value={
+        mock_database.get_user_preferences = AsyncMock(return_value={
             "language": "en",
             "verbosity": "medium",
         })
         
-        with patch("src.db.get_database", return_value=mock_db):
+        with patch("src.nodes.chat.service_integration.get_database", mock_get_database):
             context = await service._load_conversation_context(
                 conversation_id="conv-123",
                 user_id="user-456",
@@ -63,11 +62,9 @@ class TestLoadConversationContext:
         assert context.message_count == 10
 
     @pytest.mark.asyncio
-    async def test_load_new_conversation(self, service):
+    async def test_load_new_conversation(self, service, mock_get_database, mock_database):
         """Test loading context for new conversation (no ID)."""
-        mock_db = AsyncMock()
-        mock_get_database = AsyncMock(return_value=mock_db)
-        with patch("src.db.get_database", mock_get_database):
+        with patch("src.nodes.chat.service_integration.get_database", mock_get_database):
             context = await service._load_conversation_context(
                 conversation_id=None,
                 user_id="user-789",
@@ -80,20 +77,19 @@ class TestLoadConversationContext:
         assert context.history_last_20_messages == []
 
     @pytest.mark.asyncio
-    async def test_load_conversation_with_history(self, service):
+    async def test_load_conversation_with_history(self, service, mock_get_database, mock_database):
         """Test loads message history (last 20)."""
-        mock_db = AsyncMock()
         messages = [
             {"role": "user", "content": f"Message {i}"} if i % 2 == 0
             else {"role": "assistant", "content": f"Response {i}"}
             for i in range(20)
         ]
         
-        mock_db.get_conversation = AsyncMock(return_value={"id": "conv-123", "message_count": 50})
-        mock_db.get_messages = AsyncMock(return_value=messages)
-        mock_db.get_user_preferences = AsyncMock(return_value={})
+        mock_database.get_conversation = AsyncMock(return_value={"id": "conv-123", "message_count": 50})
+        mock_database.get_messages = AsyncMock(return_value=messages)
+        mock_database.get_user_preferences = AsyncMock(return_value={})
         
-        with patch("src.db.get_database", return_value=mock_db):
+        with patch("src.nodes.chat.service_integration.get_database", mock_get_database):
             context = await service._load_conversation_context(
                 conversation_id="conv-123",
                 user_id="user-456",
@@ -104,19 +100,18 @@ class TestLoadConversationContext:
         assert len(context.history_last_20_messages) == 20
 
     @pytest.mark.asyncio
-    async def test_load_conversation_stats(self, service):
+    async def test_load_conversation_stats(self, service, mock_get_database, mock_database):
         """Test loads conversation statistics."""
         created = datetime.now(timezone.utc) - timedelta(hours=2)
-        mock_db = AsyncMock()
-        mock_db.get_conversation = AsyncMock(return_value={
+        mock_database.get_conversation = AsyncMock(return_value={
             "id": "conv-123",
             "message_count": 15,
             "created_at": created,
         })
-        mock_db.get_messages = AsyncMock(return_value=[])
-        mock_db.get_user_preferences = AsyncMock(return_value={})
+        mock_database.get_messages = AsyncMock(return_value=[])
+        mock_database.get_user_preferences = AsyncMock(return_value={})
         
-        with patch("src.db.get_database", return_value=mock_db):
+        with patch("src.nodes.chat.service_integration.get_database", mock_get_database):
             context = await service._load_conversation_context(
                 conversation_id="conv-123",
                 user_id="user-456",
@@ -129,7 +124,7 @@ class TestLoadConversationContext:
         assert stats["message_count"] == 15
 
     @pytest.mark.asyncio
-    async def test_load_user_preferences(self, service):
+    async def test_load_user_preferences(self, service, mock_get_database, mock_database):
         """Test loads user preferences."""
         preferences = {
             "language": "es",
@@ -137,12 +132,11 @@ class TestLoadConversationContext:
             "response_length": "short",
         }
         
-        mock_db = AsyncMock()
-        mock_db.get_conversation = AsyncMock(return_value={"id": "conv-123", "message_count": 5})
-        mock_db.get_messages = AsyncMock(return_value=[])
-        mock_db.get_user_preferences = AsyncMock(return_value=preferences)
+        mock_database.get_conversation = AsyncMock(return_value={"id": "conv-123", "message_count": 5})
+        mock_database.get_messages = AsyncMock(return_value=[])
+        mock_database.get_user_preferences = AsyncMock(return_value=preferences)
         
-        with patch("src.db.get_database", return_value=mock_db):
+        with patch("src.nodes.chat.service_integration.get_database", mock_get_database):
             context = await service._load_conversation_context(
                 conversation_id="conv-123",
                 user_id="user-456",
@@ -157,12 +151,11 @@ class TestLoadConversationContext:
     # ═══════════════════════════════════════════════════════════
 
     @pytest.mark.asyncio
-    async def test_database_connection_error(self, service):
+    async def test_database_connection_error(self, service, mock_get_database, mock_database):
         """Test database connection error handling."""
-        mock_db = AsyncMock()
-        mock_db.get_conversation = AsyncMock(side_effect=ConnectionError("DB down"))
+        mock_database.get_conversation = AsyncMock(side_effect=ConnectionError("DB down"))
         
-        with patch("src.db.get_database", return_value=mock_db):
+        with patch("src.nodes.chat.service_integration.get_database", mock_get_database):
             with pytest.raises(DatabaseError):
                 await service._load_conversation_context(
                     conversation_id="conv-123",
@@ -174,7 +167,7 @@ class TestLoadConversationContext:
     @pytest.mark.asyncio
     async def test_database_module_not_available(self, service):
         """Test when database module is not available."""
-        with patch("src.db.get_database", side_effect=ImportError("DB module not found")):
+        with patch("src.nodes.chat.service_integration.get_database", None):
             with pytest.raises(MemoryInjectionError):
                 await service._load_conversation_context(
                     conversation_id="conv-123",
@@ -184,12 +177,11 @@ class TestLoadConversationContext:
                 )
 
     @pytest.mark.asyncio
-    async def test_conversation_not_found(self, service):
+    async def test_conversation_not_found(self, service, mock_get_database, mock_database):
         """Test handling non-existent conversation."""
-        mock_db = AsyncMock()
-        mock_db.get_conversation = AsyncMock(return_value=None)
+        mock_database.get_conversation = AsyncMock(return_value=None)
         
-        with patch("src.db.get_database", return_value=mock_db):
+        with patch("src.nodes.chat.service_integration.get_database", mock_get_database):
             context = await service._load_conversation_context(
                 conversation_id="conv-nonexistent",
                 user_id="user-456",
@@ -205,14 +197,13 @@ class TestLoadConversationContext:
     # ═══════════════════════════════════════════════════════════
 
     @pytest.mark.asyncio
-    async def test_load_conversation_no_user_id(self, service):
+    async def test_load_conversation_no_user_id(self, service, mock_get_database, mock_database):
         """Test loading conversation without user_id (anonymous)."""
-        mock_db = AsyncMock()
-        mock_db.get_conversation = AsyncMock(return_value={"id": "conv-123", "message_count": 3})
-        mock_db.get_messages = AsyncMock(return_value=[])
-        mock_db.get_user_preferences = AsyncMock(return_value={})
+        mock_database.get_conversation = AsyncMock(return_value={"id": "conv-123", "message_count": 3})
+        mock_database.get_messages = AsyncMock(return_value=[])
+        mock_database.get_user_preferences = AsyncMock(return_value={})
         
-        with patch("src.db.get_database", return_value=mock_db):
+        with patch("src.nodes.chat.service_integration.get_database", mock_get_database):
             context = await service._load_conversation_context(
                 conversation_id="conv-123",
                 user_id=None,
@@ -224,14 +215,13 @@ class TestLoadConversationContext:
         assert context.user_id is None
 
     @pytest.mark.asyncio
-    async def test_load_conversation_partial_preferences(self, service):
+    async def test_load_conversation_partial_preferences(self, service, mock_get_database, mock_database):
         """Test loading when some preferences missing."""
-        mock_db = AsyncMock()
-        mock_db.get_conversation = AsyncMock(return_value={"id": "conv-123", "message_count": 1})
-        mock_db.get_messages = AsyncMock(return_value=[])
-        mock_db.get_user_preferences = AsyncMock(return_value={})  # Empty preferences
+        mock_database.get_conversation = AsyncMock(return_value={"id": "conv-123", "message_count": 1})
+        mock_database.get_messages = AsyncMock(return_value=[])
+        mock_database.get_user_preferences = AsyncMock(return_value={})  # Empty preferences
         
-        with patch("src.db.get_database", return_value=mock_db):
+        with patch("src.nodes.chat.service_integration.get_database", mock_get_database):
             context = await service._load_conversation_context(
                 conversation_id="conv-123",
                 user_id="user-456",
@@ -245,5 +235,3 @@ class TestLoadConversationContext:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
-
-

@@ -178,19 +178,18 @@ class TestLoadConversationContext:
 
     @pytest.mark.asyncio
     async def test_conversation_not_found(self, service, mock_get_database, mock_database):
-        """Test handling non-existent conversation."""
+        """Test handling non-existent conversation ID."""
         mock_database.get_conversation = AsyncMock(return_value=None)
         
         with patch("src.nodes.chat.service_integration.get_database", mock_get_database):
-            context = await service._load_conversation_context(
-                conversation_id="conv-nonexistent",
-                user_id="user-456",
-                conversation_type=ConversationType.GENERAL,
-                tone=ConversationTone.PROFESSIONAL,
-            )
-        
-        # Should return empty context for non-existent conversation
-        assert context.message_count == 0
+            # Should raise error when conversation doesn't exist
+            with pytest.raises(MemoryInjectionError):
+                await service._load_conversation_context(
+                    conversation_id="conv-nonexistent",
+                    user_id="user-456",
+                    conversation_type=ConversationType.GENERAL,
+                    tone=ConversationTone.PROFESSIONAL,
+                )
 
     # ═══════════════════════════════════════════════════════════
     # EDGE CASE TESTS

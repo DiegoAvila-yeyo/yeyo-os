@@ -17,8 +17,22 @@ class Database:
         await asyncio.sleep(0)  # Async placeholder
         return None
     
-    async def get_messages(self, conversation_id: str, limit: int = 20) -> List[Dict]:
-        """Get message history."""
+    async def get_messages(
+        self,
+        conversation_id: str,
+        limit: int = 20,
+        offset: int = 0
+    ) -> List[Dict]:
+        """Get message history with pagination."""
+        await asyncio.sleep(0)  # Async placeholder
+        return []
+    
+    async def get_confidence_scores(
+        self,
+        conversation_id: str,
+        limit: int = 10
+    ) -> List[float]:
+        """Get confidence scores for previous messages."""
         await asyncio.sleep(0)  # Async placeholder
         return []
     

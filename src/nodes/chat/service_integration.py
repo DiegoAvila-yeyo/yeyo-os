@@ -14,6 +14,8 @@ Handles the complete pipeline:
 import asyncio
 import logging
 import uuid
+import httpx
+import json
 from typing import Optional, Tuple, Union
 from datetime import datetime, timezone
 
@@ -547,43 +549,190 @@ class ChatNodeService:
         message_history: list,
     ) -> str:
         """
-        Perform actual Ollama call.
+        Make real HTTP call to Ollama API.
         
-        This is what gets retried.
+        Connects to Ollama running on localhost:11434
+        
+        Args:
+            system_prompt: System prompt for the model
+            user_message: User's message
+            message_history: Previous messages in conversation
+            
+        Returns:
+            Model response text
+            
+        Raises:
+            OllamaUnreachableError: Cannot connect to Ollama
+            OllamaTimeoutError: Request timed out
+            OllamaInvalidResponseError: Invalid response format
+            OllamaError: Other Ollama-related errors
         """
-        # TODO: Implement real Ollama call
-        # For now, return mock response
-        return f"Response to: {user_message}"
+        ollama_url = "http://localhost:11434/api/generate"
+        model_name = "llama2"  # Default model, can be configured
+        
+        # Build conversation context from history
+        context_messages = "\n".join([
+            f"{msg.get('role', 'user').upper()}: {msg.get('content', '')}"
+            for msg in message_history[-10:]  # Use last 10 messages for context
+        ])
+        
+        # Build prompt with context
+        if context_messages:
+            full_prompt = f"Previous conversation:\n{context_messages}\n\nUser: {user_message}"
+        else:
+            full_prompt = user_message
+        
+        # Prepare request payload
+        payload = {
+            "model": model_name,
+            "prompt": full_prompt,
+            "system": system_prompt,
+            "stream": False,
+            "temperature": 0.7,
+            "top_p": 0.9,
+        }
+        
+        try:
+            self._logger.debug(f"Calling Ollama ({model_name}) at {ollama_url}")
+            
+            async with httpx.AsyncClient(timeout=self.OLLAMA_TIMEOUT_SECONDS) as client:
+                try:
+                    response = await client.post(
+                        ollama_url,
+                        json=payload,
+                    )
+                    
+                except (ConnectionError, OSError) as e:
+                    self._logger.error(f"Cannot connect to Ollama: {e}")
+                    raise OllamaUnreachableError(f"Cannot connect to Ollama at {ollama_url}: {e}")
+                
+                except TimeoutError as e:
+                    self._logger.error(f"Ollama request timeout: {e}")
+                    raise OllamaTimeoutError(f"Ollama request timed out after {self.OLLAMA_TIMEOUT_SECONDS}s: {e}")
+            
+            # Check HTTP status
+            if response.status_code == 404:
+                self._logger.error(f"Model {model_name} not found on Ollama")
+                raise OllamaError(f"Model '{model_name}' not found. Available models: check Ollama dashboard")
+            
+            if response.status_code == 500:
+                self._logger.error(f"Ollama server error: {response.text}")
+                raise OllamaError(f"Ollama server error: {response.text}")
+            
+            if response.status_code != 200:
+                self._logger.error(f"Ollama HTTP error {response.status_code}: {response.text}")
+                raise OllamaError(f"Ollama error: HTTP {response.status_code}")
+            
+            # Parse response
+            try:
+                response_data = response.json()
+            except json.JSONDecodeError as e:
+                self._logger.error(f"Invalid JSON from Ollama: {e}")
+                raise OllamaInvalidResponseError(f"Ollama returned invalid JSON: {e}")
+            
+            # Validate response structure
+            if "response" not in response_data:
+                self._logger.error(f"Missing 'response' field in Ollama response: {response_data.keys()}")
+                raise OllamaInvalidResponseError("Ollama response missing 'response' field")
+            
+            ollama_response = response_data.get("response")
+            
+            # Validate response is string
+            if not isinstance(ollama_response, str):
+                self._logger.error(f"Ollama response is not string: {type(ollama_response)}")
+                raise OllamaInvalidResponseError(f"Response must be string, got {type(ollama_response)}")
+            
+            # Validate response is not empty
+            if not ollama_response.strip():
+                self._logger.warning("Ollama returned empty response")
+                raise OllamaInvalidResponseError("Ollama returned empty response")
+            
+            self._logger.debug(f"Ollama returned {len(ollama_response)} chars")
+            return ollama_response
+        
+        except (OllamaUnreachableError, OllamaTimeoutError, OllamaInvalidResponseError, OllamaError):
+            # Re-raise Ollama-specific exceptions
+            raise
+        
+        except Exception as e:
+            self._logger.exception(f"Unexpected error calling Ollama: {type(e).__name__}: {e}")
+            raise OllamaError(f"Unexpected error: {e}")
     
     def _validate_ollama_output(self, response: str) -> ValidationResult:
         """
-        Validate Ollama response.
+        Validate Ollama response comprehensively.
         
         Checks:
-        - Response is string
-        - Response non-empty
-        - Response valid UTF-8
-        - Response <= reasonable length
+        1. Response is string
+        2. Response non-empty (after trimming whitespace)
+        3. Agent validation (format, no hallucinations, confidence)
+        4. Response valid UTF-8
         
         Returns:
-            ValidationResult
+            ValidationResult with is_valid=True or error details
         """
+        # Basic type check
         if not isinstance(response, str):
+            self._logger.warning(f"Response is not string: {type(response)}")
             return ValidationResult(
                 is_valid=False,
                 error_code=ErrorCode.ERROR_OLLAMA_INVALID_RESPONSE,
                 error_message="Invalid response type",
             )
         
-        if len(response.strip()) == 0:
+        # Check non-empty (after trimming whitespace)
+        if not response.strip():
+            self._logger.warning("Response is empty or whitespace-only")
             return ValidationResult(
                 is_valid=False,
                 error_code=ErrorCode.ERROR_OLLAMA_INVALID_RESPONSE,
                 error_message="Empty response",
             )
         
-        # TODO: Call agent.validate_output()
+        # Validate UTF-8 encoding
+        try:
+            response.encode('utf-8')
+        except UnicodeEncodeError as e:
+            self._logger.warning(f"Response contains invalid UTF-8: {e}")
+            return ValidationResult(
+                is_valid=False,
+                error_code=ErrorCode.ERROR_OLLAMA_INVALID_RESPONSE,
+                error_message="Invalid character encoding",
+            )
         
+        # Call agent to validate response quality
+        try:
+            from src.agents.conversation import ConversationAgent
+            
+            agent = ConversationAgent()
+            validation_result = agent.validate_output(response)
+            
+            if not validation_result or (isinstance(validation_result, dict) and not validation_result.get("valid", False)):
+                reason = validation_result.get("reason", "Agent validation failed") if isinstance(validation_result, dict) else "Agent validation failed"
+                self._logger.warning(f"Agent validation failed: {reason}")
+                return ValidationResult(
+                    is_valid=False,
+                    error_code=ErrorCode.ERROR_AGENT_VALIDATION_FAILED,
+                    error_message=reason,
+                )
+        
+        except AgentValidationError as e:
+            self._logger.error(f"Agent validation error: {e}")
+            return ValidationResult(
+                is_valid=False,
+                error_code=ErrorCode.ERROR_AGENT_VALIDATION_FAILED,
+                error_message=str(e),
+            )
+        
+        except Exception as e:
+            self._logger.error(f"Unexpected error during agent validation: {e}")
+            return ValidationResult(
+                is_valid=False,
+                error_code=ErrorCode.ERROR_AGENT_VALIDATION_FAILED,
+                error_message=f"Validation error: {e}",
+            )
+        
+        self._logger.debug("Response validation passed")
         return ValidationResult(is_valid=True)
     
     async def _store_in_memory(

@@ -432,27 +432,158 @@ class ChatNodeService:
         tone: ConversationTone,
     ) -> ConversationContext:
         """
-        Load full context for this conversation.
+        Load conversation context from database.
         
         Fetches:
-        - Message history (last 20)
-        - User preferences (from memory)
-        - Conversation statistics
+        - Message history (last 20 messages)
+        - User preferences
+        - Conversation statistics (duration, response times, confidence)
         
         Returns:
-            ConversationContext with all data
+            ConversationContext with all historical data
+            
+        Raises:
+            DatabaseError: Database operation failed
+            MemoryInjectionError: Memory system error
         """
-        # TODO: Implement real data loading
-        # For now, return minimal context
-        return ConversationContext(
-            conversation_id=conversation_id or "",
-            user_id=user_id,
-            conversation_type=conversation_type,
-            tone=tone,
-            message_count=0,
-            history_last_20_messages=[],
-            user_preferences={},
-        )
+        try:
+            from src.db import get_database
+            
+            db = await get_database()
+            
+            # If no conversation_id, return empty context for new conversation
+            if not conversation_id:
+                self._logger.debug("Loading context for new conversation")
+                return ConversationContext(
+                    conversation_id="",
+                    user_id=user_id,
+                    conversation_type=conversation_type,
+                    tone=tone,
+                    message_count=0,
+                    history_last_20_messages=[],
+                    user_preferences={},
+                    conversation_duration_seconds=0,
+                    average_response_time_ms=0.0,
+                    previous_confidence_scores=[],
+                )
+            
+            # Load existing conversation data
+            self._logger.debug(f"Loading context for conversation: {conversation_id}")
+            
+            try:
+                # Get conversation metadata
+                conv_data = await db.get_conversation(conversation_id)
+                if not conv_data:
+                    self._logger.warning(f"Conversation not found: {conversation_id}")
+                    # Return empty context for non-existent conversation
+                    return ConversationContext(
+                        conversation_id=conversation_id,
+                        user_id=user_id,
+                        conversation_type=conversation_type,
+                        tone=tone,
+                        message_count=0,
+                        history_last_20_messages=[],
+                        user_preferences={},
+                    )
+                
+                message_count = conv_data.get("message_count", 0)
+                created_at = conv_data.get("created_at")
+                
+                # Calculate conversation duration
+                conversation_duration_seconds = 0
+                if created_at:
+                    duration = datetime.now(timezone.utc) - created_at
+                    conversation_duration_seconds = int(duration.total_seconds())
+                
+            except Exception as e:
+                self._logger.error(f"Failed to load conversation metadata: {e}")
+                raise DatabaseError(f"Failed to load conversation metadata: {e}")
+            
+            try:
+                # Get message history (last 20 messages)
+                messages = await db.get_messages(
+                    conversation_id=conversation_id,
+                    limit=20,
+                    offset=max(0, message_count - 20)
+                )
+                history_messages = [
+                    {
+                        "role": msg.get("role", "user"),
+                        "content": msg.get("content", ""),
+                    }
+                    for msg in (messages or [])
+                ]
+                self._logger.debug(f"Loaded {len(history_messages)} messages from history")
+                
+            except Exception as e:
+                self._logger.error(f"Failed to load message history: {e}")
+                history_messages = []
+            
+            try:
+                # Get user preferences
+                user_preferences = await db.get_user_preferences(user_id) if user_id else {}
+                if not user_preferences:
+                    user_preferences = {}
+                self._logger.debug(f"Loaded user preferences: {len(user_preferences)} items")
+                
+            except Exception as e:
+                self._logger.warning(f"Failed to load user preferences: {e}")
+                user_preferences = {}
+            
+            try:
+                # Get confidence scores (for stats)
+                confidence_scores = await db.get_confidence_scores(
+                    conversation_id=conversation_id,
+                    limit=10
+                )
+                previous_confidence_scores = [float(score) for score in (confidence_scores or [])]
+                
+            except Exception as e:
+                self._logger.debug(f"Failed to load confidence scores: {e}")
+                previous_confidence_scores = []
+            
+            # Calculate average response time
+            average_response_time_ms = 0.0
+            try:
+                avg_time = await db.get_average_response_time(conversation_id)
+                if avg_time:
+                    average_response_time_ms = float(avg_time)
+            except Exception as e:
+                self._logger.debug(f"Failed to load average response time: {e}")
+            
+            context = ConversationContext(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                conversation_type=conversation_type,
+                tone=tone,
+                message_count=message_count,
+                history_last_20_messages=history_messages,
+                user_preferences=user_preferences,
+                conversation_duration_seconds=conversation_duration_seconds,
+                average_response_time_ms=average_response_time_ms,
+                previous_confidence_scores=previous_confidence_scores,
+            )
+            
+            self._logger.info(
+                "Conversation context loaded successfully",
+                extra={
+                    "conversation_id": conversation_id,
+                    "message_count": message_count,
+                    "duration_seconds": conversation_duration_seconds,
+                }
+            )
+            return context
+        
+        except (DatabaseError, MemoryInjectionError):
+            raise
+        
+        except ImportError as e:
+            self._logger.error(f"Database module not available: {e}")
+            raise MemoryInjectionError(f"Database system not available: {e}")
+        
+        except Exception as e:
+            self._logger.exception(f"Unexpected error loading conversation context: {type(e).__name__}: {e}")
+            raise MemoryInjectionError(f"Failed to load context: {e}")
     
     def _get_system_prompt(self, context: ConversationContext) -> str:
         """
@@ -743,8 +874,88 @@ class ChatNodeService:
         user_id: Optional[str],
     ) -> None:
         """
-        Store interaction in memory system.
+        Store conversation interaction in database.
         
-        TODO: Implement memory storage
+        Stores both user message and assistant response with metadata.
+        Creates new conversation if needed.
+        
+        Args:
+            conversation_id: Existing conversation ID (None to create new)
+            user_message: User's message text
+            assistant_response: Assistant's response text
+            user_id: User ID for association
+            
+        Raises:
+            DatabaseError: Database operation failed
+            MemoryInjectionError: Memory system error
         """
-        self._logger.debug(f"Storing interaction in memory: {conversation_id}")
+        try:
+            from src.db import get_database
+            
+            db = await get_database()
+            
+            # Create conversation if doesn't exist
+            if not conversation_id:
+                conversation_id = f"conv-{uuid.uuid4().hex[:12]}"
+                self._logger.debug(f"Creating new conversation: {conversation_id}")
+                
+                try:
+                    await db.create_conversation(
+                        conversation_id=conversation_id,
+                        user_id=user_id,
+                        created_at=datetime.now(timezone.utc),
+                    )
+                except Exception as e:
+                    self._logger.error(f"Failed to create conversation: {e}")
+                    raise DatabaseError(f"Failed to create conversation: {e}")
+            
+            # Store user message
+            try:
+                await db.store_message(
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    role="user",
+                    content=user_message,
+                    timestamp=datetime.now(timezone.utc),
+                    tokens_used=len(user_message.split()),  # Rough estimate
+                )
+                self._logger.debug(f"Stored user message in {conversation_id}")
+            except Exception as e:
+                self._logger.error(f"Failed to store user message: {e}")
+                raise DatabaseError(f"Failed to store user message: {e}")
+            
+            # Store assistant response
+            try:
+                await db.store_message(
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    role="assistant",
+                    content=assistant_response,
+                    timestamp=datetime.now(timezone.utc),
+                    tokens_used=len(assistant_response.split()),  # Rough estimate
+                )
+                self._logger.debug(f"Stored assistant response in {conversation_id}")
+            except Exception as e:
+                self._logger.error(f"Failed to store assistant response: {e}")
+                raise DatabaseError(f"Failed to store assistant response: {e}")
+            
+            self._logger.info(
+                f"Interaction stored successfully",
+                extra={
+                    "conversation_id": conversation_id,
+                    "user_id": user_id,
+                    "message_length": len(user_message),
+                    "response_length": len(assistant_response),
+                }
+            )
+        
+        except DatabaseError:
+            raise
+        
+        except ImportError as e:
+            self._logger.error(f"Database module not available: {e}")
+            raise MemoryInjectionError(f"Database system not available: {e}")
+        
+        except Exception as e:
+            self._logger.exception(f"Unexpected error storing interaction: {type(e).__name__}: {e}")
+            raise MemoryInjectionError(f"Failed to store interaction: {e}")

@@ -210,7 +210,12 @@ class YeyoOrquestador:
                 if isinstance(args, str):
                     try:
                         args = json.loads(args)
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:
+                        logger.error(
+                            f"[orquestador] JSONDecodeError en arguments: {e}, "
+                            f"raw={args[:100]!r}, usando como entrada literal"
+                        )
+                        # Fallback: treat as entrada string
                         args = {"entrada": args}
                 return {"name": fn.get("name", ""), "arguments": args}
 
@@ -232,37 +237,85 @@ class YeyoOrquestador:
         contexto: dict,
         on_evento: Optional[Any],
     ) -> RespuestaOrquestador:
-        """Ejecuta el grafo correspondiente al tool_call de Ollama."""
-        grafo_id = tool_call["name"]
-        args = tool_call.get("arguments", {})
-
-        if grafo_id not in self._grafos:
+        """
+        Ejecuta el grafo correspondiente al tool_call de Ollama.
+        
+        Valida:
+        - tool_call tiene estructura correcta
+        - tool_call.name existe y es string
+        - tool_call.arguments es dict
+        - grafo existe y está registrado
+        """
+        # Validate tool_call structure
+        if not tool_call or not isinstance(tool_call, dict):
             return RespuestaOrquestador(
-                texto=f"Error: grafo '{grafo_id}' no encontrado",
+                texto="Error: tool_call inválido (no es dict)",
+                grafo_ejecutado=None,
+                exito=False,
+            )
+        
+        # Validate name exists and is string
+        grafo_id = tool_call.get("name", "").strip()
+        if not grafo_id or not isinstance(grafo_id, str):
+            return RespuestaOrquestador(
+                texto=f"Error: tool_call.name falta o inválido: {grafo_id!r}",
+                grafo_ejecutado=None,
+                exito=False,
+            )
+        
+        # Validate arguments
+        args = tool_call.get("arguments", {})
+        if not isinstance(args, dict):
+            return RespuestaOrquestador(
+                texto=f"Error: tool_call.arguments debe ser dict, recibido {type(args).__name__}",
                 grafo_ejecutado=grafo_id,
                 exito=False,
             )
 
+        # Validate grafo is registered
+        if grafo_id not in self._grafos:
+            return RespuestaOrquestador(
+                texto=f"Error: grafo '{grafo_id}' no encontrado (registrados: {', '.join(self._grafos.keys())})",
+                grafo_ejecutado=grafo_id,
+                exito=False,
+            )
+
+        # Construct entrada safely
         entrada = {
-            "mensaje": args.get("entrada", ""),
+            "mensaje": str(args.get("entrada", "")).strip(),
             "contexto_usuario": contexto,
             **args,
         }
 
-        grafo = self._grafos[grafo_id]
-        resultado = await grafo.ejecutar(entrada, on_evento=on_evento)
+        try:
+            grafo = self._grafos[grafo_id]
+            resultado = await grafo.ejecutar(entrada, on_evento=on_evento)
 
-        texto_respuesta = resultado.estado_final.salida.get(
-            "respuesta",
-            resultado.estado_final.salida.get(
-                "texto",
-                f"Grafo '{grafo_id}' completado"
+            # Extract response safely from resultado
+            try:
+                texto_respuesta = resultado.estado_final.salida.get(
+                    "respuesta",
+                    resultado.estado_final.salida.get(
+                        "texto",
+                        f"Grafo '{grafo_id}' completado"
+                    )
+                )
+            except (AttributeError, TypeError) as e:
+                logger.error(
+                    f"[orquestador] Error extrayendo respuesta de grafo {grafo_id}: {e}"
+                )
+                texto_respuesta = f"Grafo ejecutado sin respuesta legible: {e}"
+
+            return RespuestaOrquestador(
+                texto=str(texto_respuesta),
+                grafo_ejecutado=grafo_id,
+                resultado_grafo=resultado,
+                exito=resultado.exito if hasattr(resultado, 'exito') else False,
             )
-        )
-
-        return RespuestaOrquestador(
-            texto=str(texto_respuesta),
-            grafo_ejecutado=grafo_id,
-            resultado_grafo=resultado,
-            exito=resultado.exito,
-        )
+        except Exception as e:
+            logger.error(f"[orquestador] Error al ejecutar grafo '{grafo_id}': {type(e).__name__}: {e}")
+            return RespuestaOrquestador(
+                texto=f"Error al ejecutar grafo '{grafo_id}': {e}",
+                grafo_ejecutado=grafo_id,
+                exito=False,
+            )

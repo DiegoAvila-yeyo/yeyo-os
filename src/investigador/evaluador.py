@@ -25,6 +25,8 @@ PESOS_CRITERIOS = {
     "frescura": 0.20,
 }
 
+SCORE_MINIMO_ACEPTABLE = 0.3  # Candidatos con score < esto son rechazados
+
 STACK_YEYO = {
     "python", "fastapi", "postgresql", "redis", "typescript",
     "react", "nextjs", "next.js", "zustand", "tailwind",
@@ -70,6 +72,13 @@ class EvaluadorCandidatos:
         for candidato in candidatos:
             ev = EvaluacionCandidato(resultado=candidato)
 
+            # Validate minimum requirement: código no vacío
+            if not candidato.codigo or not candidato.codigo.strip():
+                ev.score_final = 0.0
+                ev.razones.append("código_vacío")
+                evaluaciones.append(ev)
+                continue
+
             ev.pasa_lint = self._evaluar_lint(candidato)
             ev.compatible_stack = self._evaluar_stack(candidato)
             ev.tiene_tests = self._evaluar_tests(candidato)
@@ -84,6 +93,13 @@ class EvaluadorCandidatos:
                 + ev.frescura * PESOS_CRITERIOS["frescura"],
                 3,
             )
+
+            # Ensure score is in valid range [0.0, 1.0]
+            ev.score_final = max(0.0, min(1.0, ev.score_final))
+
+            # Log reason if score very low
+            if ev.score_final < SCORE_MINIMO_ACEPTABLE:
+                ev.razones.append(f"score_muy_bajo_{ev.score_final}")
 
             evaluaciones.append(ev)
 
@@ -106,10 +122,10 @@ class EvaluadorCandidatos:
 
     def _evaluar_stack(self, candidato: ResultadoBusqueda) -> float:
         """Verifica compatibilidad con el stack del proyecto."""
-        meta = candidato.metadata
-        lenguaje = str(meta.get("lenguaje", "")).lower()
-        tags = [t.lower() for t in meta.get("tags", [])]
-        topics = [t.lower() for t in meta.get("topics", [])]
+        meta = candidato.metadata or {}
+        lenguaje = str(meta.get("lenguaje", "")).lower() if meta.get("lenguaje") else ""
+        tags = [t.lower() for t in meta.get("tags", []) if t]
+        topics = [t.lower() for t in meta.get("topics", []) if t]
         texto = candidato.codigo.lower()
 
         coincidencias = 0
@@ -118,7 +134,8 @@ class EvaluadorCandidatos:
                 coincidencias += 1
 
         if coincidencias == 0:
-            return 0.3
+            # No stack match, but text analysis is still useful
+            return 0.4
         return min(coincidencias / 3.0, 1.0)
 
     def _evaluar_tests(self, candidato: ResultadoBusqueda) -> float:
@@ -134,9 +151,18 @@ class EvaluadorCandidatos:
 
     def _evaluar_popularidad(self, candidato: ResultadoBusqueda) -> float:
         """Score basado en estrellas (GitHub) o votos (SO)."""
-        meta = candidato.metadata
+        meta = candidato.metadata or {}
         estrellas = meta.get("estrellas", 0)
         votos = meta.get("votos", 0)
+        
+        # Handle non-numeric values
+        try:
+            estrellas = int(estrellas) if estrellas else 0
+            votos = int(votos) if votos else 0
+        except (ValueError, TypeError):
+            estrellas = 0
+            votos = 0
+        
         valor = max(estrellas, votos)
 
         if valor >= 1000:
@@ -147,12 +173,20 @@ class EvaluadorCandidatos:
             return 0.6
         if valor >= 10:
             return 0.4
-        return 0.2
+        if valor > 0:
+            return 0.2
+        # No popularity data = neutral score (not penalized)
+        return 0.5
 
     def _evaluar_frescura(self, candidato: ResultadoBusqueda) -> float:
         """Score basado en qué tan reciente es el contenido."""
-        meta = candidato.metadata
-        actualizado = str(meta.get("actualizado", ""))
+        meta = candidato.metadata or {}
+        actualizado = str(meta.get("actualizado", "")) if meta.get("actualizado") else ""
+        
+        if not actualizado:
+            # No timestamp = neutral (assume recent)
+            return 0.5
+        
         if "2025" in actualizado:
             return 1.0
         if "2024" in actualizado:

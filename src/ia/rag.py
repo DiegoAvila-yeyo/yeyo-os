@@ -143,6 +143,14 @@ class RAGPipeline:
     ) -> list[Memory]:
         """Fase de Retrieval: buscar memorias relevantes."""
         try:
+            # Validate embedding dimensions
+            if not embedding or len(embedding) != self.embeddings.dimension:
+                logger.error(
+                    f"RAG Retrieve: Invalid embedding dimensions. "
+                    f"Expected {self.embeddings.dimension}, got {len(embedding) if embedding else 0}"
+                )
+                return []
+            
             memories = await self.memory.search_semantic(
                 embedding=embedding,
                 threshold=threshold,
@@ -213,13 +221,14 @@ class RAGPipeline:
         """
         Calcula confianza base de la respuesta.
         - Más fuentes = más confianza
-        - Sin fuentes = confianza base de 0.5
+        - Sin fuentes = confianza base de 0.1 (muy baja)
+        - Con 5 fuentes = 1.0
         """
         if not sources:
-            return 0.5
+            return 0.1  # No sources = very low confidence
 
-        # Base: 0.5 + 0.1 por cada fuente (máx 5 fuentes = 1.0)
-        source_bonus = min(0.5, len(sources) * 0.1)
-        confidence = 0.5 + source_bonus
+        # Base: 0.1 + 0.18 per source (5 sources = 1.0)
+        source_bonus = min(0.9, len(sources) * 0.18)
+        confidence = 0.1 + source_bonus
 
         return min(1.0, confidence)

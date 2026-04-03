@@ -61,6 +61,9 @@ class GPUScheduler:
     4. Solo UNA tarea pesada a la vez (Ollama O SD, nunca ambos)
     """
 
+    _instance: "GPUScheduler | None" = None
+    _instance_lock: asyncio.Lock | None = None
+
     def __init__(
         self,
         total_vram_mb: int = 3072,
@@ -74,6 +77,7 @@ class GPUScheduler:
         self._queue: asyncio.PriorityQueue[GPUTask] = asyncio.PriorityQueue()
         self._lock = asyncio.Lock()
         self._task_history: list[GPUTask] = []
+        self._node_to_task: dict[str, str] = {}
 
     @property
     def free_vram_mb(self) -> int:
@@ -207,6 +211,48 @@ class GPUScheduler:
 
     def get_current_tasks(self) -> list[GPUTask]:
         return list(self._current_tasks.values())
+
+    @classmethod
+    async def get_instance(cls) -> "GPUScheduler":
+        """Get or create singleton GPU Scheduler instance."""
+        if cls._instance is None:
+            if cls._instance_lock is None:
+                cls._instance_lock = asyncio.Lock()
+            async with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = cls()
+        return cls._instance
+
+    @classmethod
+    def get_instance_sync(cls) -> "GPUScheduler":
+        """Get singleton instance (synchronous version for non-async contexts)."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    async def allocate(self, node_id: str, vram_mb: int, priority: int) -> bool:
+        """Allocate GPU resources for a node."""
+        if priority <= 2:
+            gpu_priority = GPUPriority.P1_USER
+        elif priority <= 5:
+            gpu_priority = GPUPriority.P2_BACKGROUND
+        else:
+            gpu_priority = GPUPriority.P3_IDLE
+
+        task = GPUTask(
+            name=f"node-{node_id}",
+            priority=gpu_priority,
+            vram_needed_mb=vram_mb,
+        )
+        task_id = await self.submit(task)
+        self._node_to_task[node_id] = task_id
+        return task.status == "running"
+
+    async def release_node(self, node_id: str) -> None:
+        """Release GPU resources for a node."""
+        task_id = self._node_to_task.pop(node_id, None)
+        if task_id:
+            await self.release(task_id, status="completed")
 
     def get_task_count(self) -> int:
         return len(self._current_tasks)

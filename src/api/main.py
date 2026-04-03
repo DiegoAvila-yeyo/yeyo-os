@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.core.config import get_config
+from src.core.gpu_scheduler import GPUScheduler
 from src.ia.ollama_provider import OllamaProvider
 from src.ia.ollama_embeddings import OllamaEmbeddingService
 from src.memory.flash_memory import FlashMemory
@@ -39,6 +40,7 @@ logger = logging.getLogger("yeyoos.api")
 _start_time: float = 0.0
 
 # Servicios globales (inicializados en lifespan)
+_gpu_scheduler: GPUScheduler | None = None
 _ia_provider: OllamaProvider | None = None
 _flash_memory: FlashMemory | None = None
 _conv_manager: ConversationManager | None = None
@@ -52,12 +54,17 @@ _association_engine = None
 async def lifespan(app: FastAPI):
     """Startup: conectar todos los servicios. Shutdown: cerrar conexiones."""
     global _start_time, _ia_provider, _flash_memory, _conv_manager
-    global _feedback_service, _chat_service, _embedding_service, _association_engine
+    global _feedback_service, _chat_service, _embedding_service, _association_engine, _gpu_scheduler
 
     _start_time = time.time()
     config = get_config()
 
     logger.info("🚀 YeyoOS Backend iniciando...")
+
+    # 0. GPU Scheduler (MUST be before IA providers)
+    _gpu_scheduler = await GPUScheduler.get_instance()
+    gpu_ok = _gpu_scheduler.can_fit(2500)  # Check if can fit SD
+    logger.info(f"  GPU Scheduler: {'✅' if gpu_ok else '⚠️ Limited VRAM'} (free: {_gpu_scheduler.free_vram_mb}MB)")
 
     # 1. OllamaProvider (IA)
     _ia_provider = OllamaProvider(

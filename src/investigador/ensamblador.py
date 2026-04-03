@@ -10,6 +10,7 @@ Cada adaptación es una micro-tarea con contexto limpio.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any, Dict, Optional
 
@@ -167,15 +168,21 @@ class Ensamblador:
                 temperature=0.1,
             )
             contenido = respuesta.content.lower()
-            for line in contenido.split("\n"):
-                if "score:" in line:
-                    try:
-                        score_str = line.split("score:")[-1].strip()
-                        return min(max(float(score_str), 0.0), 1.0)
-                    except ValueError:
-                        pass
+            
+            # Try to extract score using regex (more robust than split)
+            # Matches: "score: 0.85", "score:0.85", "score = 0.85", etc.
+            match = re.search(r'score\s*[:=]\s*([0-9]+\.?[0-9]*)', contenido)
+            if match:
+                try:
+                    score_value = float(match.group(1))
+                    return min(max(score_value, 0.0), 1.0)
+                except ValueError:
+                    pass
+            
+            # Fallback: check if response indicates correctness
             if "correcto: sí" in contenido or "correcto: si" in contenido:
                 return 0.85
+            
             return 0.5
         except Exception as e:
             logger.warning(f"[ensamblador] Error verificando adaptación: {e}")

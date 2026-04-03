@@ -118,16 +118,41 @@ class PipelineInvestigador:
 
             todos = (internos or []) + (externos or [])
             if not todos:
+                # Track WHY no results
+                fallo_interno = internos is None or len(internos) == 0
+                fallo_externo = externos is None or len(externos) == 0
+                
                 investigacion.resultado_final = ""
                 investigacion.confianza = 0.0
                 investigacion.tiempo_total_ms = int((time.perf_counter() - inicio) * 1000)
-                logger.warning(f"[pipeline] {tarea_id} sin resultados")
+                investigacion.exito = False
+                
+                # Log structured failure info
+                razon = []
+                if fallo_interno:
+                    razon.append("búsqueda_interna_sin_resultados")
+                if fallo_externo:
+                    razon.append("búsqueda_externa_sin_resultados")
+                
+                investigacion.fallos = {
+                    "interno_fallido": fallo_interno,
+                    "externo_fallido": fallo_externo,
+                    "razones": razon,
+                }
+                
+                logger.warning(
+                    f"[pipeline] {tarea_id} sin resultados: {', '.join(razon) if razon else 'desconocido'}"
+                )
                 return investigacion
 
             # Fase 3: Evaluar candidatos
             evaluados = await self.evaluar_candidatos(todos, investigacion)
-            if not evaluados:
+            if not evaluados or len(evaluados) == 0:
+                investigacion.resultado_final = ""
+                investigacion.confianza = 0.0
+                investigacion.exito = False
                 investigacion.tiempo_total_ms = int((time.perf_counter() - inicio) * 1000)
+                logger.warning(f"[pipeline] {tarea_id} evaluación retornó cero candidatos")
                 return investigacion
 
             mejor_candidato = evaluados[0].resultado

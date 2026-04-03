@@ -49,6 +49,7 @@ class InvestigacionCompleta:
     tokens_total: int = 0
     fuentes_usadas: List[str] = field(default_factory=list)
     exito: bool = False
+    fallos: Dict[str, Any] = field(default_factory=dict)  # Track failure reasons
 
 
 @dataclass

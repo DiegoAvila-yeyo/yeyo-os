@@ -46,117 +46,135 @@ class FlashMemory:
         metadata: Optional[dict] = None,
         embedding: Optional[list[float]] = None,
         source: str = "user",
-    ) -> Memory:
+    ) -> Optional[Memory]:
         """
         Almacena una nueva memoria en Flash Memory.
         El checksum SHA-256 se genera automáticamente por trigger.
+        Retorna None si falla.
         """
         if metadata is None:
             metadata = {}
 
-        async with self.pool.acquire() as conn:
-            if embedding:
-                row = await conn.fetchrow(
+        try:
+            async with self.pool.acquire() as conn:
+                if embedding:
+                    row = await conn.fetchrow(
+                        """
+                        INSERT INTO flash_memories (content, type, metadata, embedding, source)
+                        VALUES ($1, $2, $3, $4, $5)
+                        RETURNING id, content, type, tier, checksum, access_count,
+                                  metadata, source, created_at, accessed_at, updated_at
+                        """,
+                        content,
+                        type,
+                        json.dumps(metadata),
+                        str(embedding),
+                        source,
+                    )
+                else:
+                    row = await conn.fetchrow(
+                        """
+                        INSERT INTO flash_memories (content, type, metadata, source)
+                        VALUES ($1, $2, $3, $4)
+                        RETURNING id, content, type, tier, checksum, access_count,
+                                  metadata, source, created_at, accessed_at, updated_at
+                        """,
+                        content,
+                        type,
+                        json.dumps(metadata),
+                        source,
+                    )
+
+                await conn.execute(
                     """
-                    INSERT INTO flash_memories (content, type, metadata, embedding, source)
-                    VALUES ($1, $2, $3, $4, $5)
-                    RETURNING id, content, type, tier, checksum, access_count,
-                              metadata, source, created_at, accessed_at, updated_at
+                    INSERT INTO memory_audit_log (memory_id, action, details)
+                    VALUES ($1, 'CREATE', $2)
                     """,
-                    content,
-                    type,
-                    json.dumps(metadata),
-                    str(embedding),
-                    source,
-                )
-            else:
-                row = await conn.fetchrow(
-                    """
-                    INSERT INTO flash_memories (content, type, metadata, source)
-                    VALUES ($1, $2, $3, $4)
-                    RETURNING id, content, type, tier, checksum, access_count,
-                              metadata, source, created_at, accessed_at, updated_at
-                    """,
-                    content,
-                    type,
-                    json.dumps(metadata),
-                    source,
+                    row["id"],
+                    json.dumps({"type": type, "source": source}),
                 )
 
-            await conn.execute(
-                """
-                INSERT INTO memory_audit_log (memory_id, action, details)
-                VALUES ($1, 'CREATE', $2)
-                """,
-                row["id"],
-                json.dumps({"type": type, "source": source}),
-            )
-
-        logger.info(f"Memoria almacenada: {row['id']} tipo={type} tier={row['tier']}")
-        return self._row_to_memory(row)
+            logger.info(f"Memoria almacenada: {row['id']} tipo={type} tier={row['tier']}")
+            return self._row_to_memory(row)
+        except Exception as e:
+            logger.error(f"Error al almacenar memoria: {e}")
+            return None
 
     async def recall(self, query: str, limit: int = 5) -> list[Memory]:
         """
         Recupera memorias relevantes por acceso frecuente y reciente.
         Combina access_count y accessed_at para relevancia.
         """
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT id, content, type, tier, checksum, access_count,
-                       metadata, source, created_at, accessed_at, updated_at
-                FROM flash_memories
-                WHERE tier != 'COLD'
-                ORDER BY access_count DESC, accessed_at DESC
-                LIMIT $1
-                """,
-                limit,
-            )
-            for row in rows:
-                await conn.execute(
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT id, content, type, tier, checksum, access_count,
+                           metadata, source, created_at, accessed_at, updated_at
+                    FROM flash_memories
+                    WHERE tier != 'COLD'
+                    ORDER BY access_count DESC, accessed_at DESC
+                    LIMIT $1
+                    """,
+                    limit,
+                )
+                for row in rows:
+                    await conn.execute(
+                        """
+                        UPDATE flash_memories
+                        SET accessed_at = NOW(), access_count = access_count + 1
+                        WHERE id = $1
+                        """,
+                        row["id"],
+                    )
+            return [self._row_to_memory(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error en recall: {e}")
+            return []
+
+    async def recall_by_type(self, type: str, limit: int = 10) -> list[Memory]:
+        """Recupera memorias filtradas por tipo."""
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT id, content, type, tier, checksum, access_count,
+                           metadata, source, created_at, accessed_at, updated_at
+                    FROM flash_memories
+                    WHERE type = $1
+                    ORDER BY accessed_at DESC
+                    LIMIT $2
+                    """,
+                    type,
+                    limit,
+                )
+            return [self._row_to_memory(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error en recall_by_type({type}): {e}")
+            return []
+
+    async def get_by_id(self, memory_id: str) -> Optional[Memory]:
+        """Obtiene una memoria por su ID. Actualiza accessed_at."""
+        try:
+            mid = memory_id if isinstance(memory_id, uuid.UUID) else uuid.UUID(memory_id)
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
                     """
                     UPDATE flash_memories
                     SET accessed_at = NOW(), access_count = access_count + 1
                     WHERE id = $1
+                    RETURNING id, content, type, tier, checksum, access_count,
+                              metadata, source, created_at, accessed_at, updated_at
                     """,
-                    row["id"],
+                    mid,
                 )
-        return [self._row_to_memory(row) for row in rows]
-
-    async def recall_by_type(self, type: str, limit: int = 10) -> list[Memory]:
-        """Recupera memorias filtradas por tipo."""
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT id, content, type, tier, checksum, access_count,
-                       metadata, source, created_at, accessed_at, updated_at
-                FROM flash_memories
-                WHERE type = $1
-                ORDER BY accessed_at DESC
-                LIMIT $2
-                """,
-                type,
-                limit,
-            )
-        return [self._row_to_memory(row) for row in rows]
-
-    async def get_by_id(self, memory_id: str) -> Optional[Memory]:
-        """Obtiene una memoria por su ID. Actualiza accessed_at."""
-        mid = memory_id if isinstance(memory_id, uuid.UUID) else uuid.UUID(memory_id)
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                UPDATE flash_memories
-                SET accessed_at = NOW(), access_count = access_count + 1
-                WHERE id = $1
-                RETURNING id, content, type, tier, checksum, access_count,
-                          metadata, source, created_at, accessed_at, updated_at
-                """,
-                mid,
-            )
-        if row is None:
+            if row is None:
+                logger.warning(f"Memoria no encontrada: {memory_id}")
+                return None
+            return self._row_to_memory(row)
+        except Exception as e:
+            logger.error(f"Error al obtener memoria {memory_id}: {e}")
             return None
-        return self._row_to_memory(row)
 
     async def search_semantic(
         self,
@@ -200,114 +218,138 @@ class FlashMemory:
             logger.warning(f"pgvector no disponible, usando fallback: {e}")
             return await self.recall("", limit=limit)
 
-    async def promote_tier(self, memory_id: str) -> Memory:
+    async def promote_tier(self, memory_id: str) -> Optional[Memory]:
         """
         Promueve una memoria al siguiente tier: COLD→WARM→HOT.
         HOT no se puede promover más.
         """
-        mid = memory_id if isinstance(memory_id, uuid.UUID) else uuid.UUID(memory_id)
+        try:
+            mid = memory_id if isinstance(memory_id, uuid.UUID) else uuid.UUID(memory_id)
 
-        async with self.pool.acquire() as conn:
-            current = await conn.fetchrow(
-                "SELECT tier FROM flash_memories WHERE id = $1", mid
-            )
-            if current is None:
-                raise ValueError(f"Memoria no encontrada: {memory_id}")
+            async with self.pool.acquire() as conn:
+                current = await conn.fetchrow(
+                    "SELECT tier FROM flash_memories WHERE id = $1", mid
+                )
+                if current is None:
+                    logger.error(f"Memoria no encontrada al promover: {memory_id}")
+                    return None
 
-            new_tier = {"COLD": "WARM", "WARM": "HOT", "HOT": "HOT"}[current["tier"]]
+                new_tier = {"COLD": "WARM", "WARM": "HOT", "HOT": "HOT"}[current["tier"]]
 
-            row = await conn.fetchrow(
-                """
-                UPDATE flash_memories
-                SET tier = $1, updated_at = NOW()
-                WHERE id = $2
-                RETURNING id, content, type, tier, checksum, access_count,
-                          metadata, source, created_at, accessed_at, updated_at
-                """,
-                new_tier,
-                mid,
-            )
+                row = await conn.fetchrow(
+                    """
+                    UPDATE flash_memories
+                    SET tier = $1, updated_at = NOW()
+                    WHERE id = $2
+                    RETURNING id, content, type, tier, checksum, access_count,
+                              metadata, source, created_at, accessed_at, updated_at
+                    """,
+                    new_tier,
+                    mid,
+                )
 
-            await conn.execute(
-                """
-                INSERT INTO memory_audit_log (memory_id, action, details)
-                VALUES ($1, 'PROMOTE', $2)
-                """,
-                mid,
-                json.dumps({"from": current["tier"], "to": new_tier}),
-            )
+                await conn.execute(
+                    """
+                    INSERT INTO memory_audit_log (memory_id, action, details)
+                    VALUES ($1, 'PROMOTE', $2)
+                    """,
+                    mid,
+                    json.dumps({"from": current["tier"], "to": new_tier}),
+                )
 
-        logger.info(f"Memoria {memory_id} promovida: {current['tier']}→{new_tier}")
-        return self._row_to_memory(row)
+            logger.info(f"Memoria {memory_id} promovida: {current['tier']}→{new_tier}")
+            return self._row_to_memory(row)
+        except Exception as e:
+            logger.error(f"Error al promover memoria {memory_id}: {e}")
+            return None
 
-    async def demote_tier(self, memory_id: str) -> Memory:
+    async def demote_tier(self, memory_id: str) -> Optional[Memory]:
         """
         Degrada una memoria al tier inferior: HOT→WARM→COLD.
         COLD no se puede degradar más.
         """
-        mid = memory_id if isinstance(memory_id, uuid.UUID) else uuid.UUID(memory_id)
+        try:
+            mid = memory_id if isinstance(memory_id, uuid.UUID) else uuid.UUID(memory_id)
 
-        async with self.pool.acquire() as conn:
-            current = await conn.fetchrow(
-                "SELECT tier FROM flash_memories WHERE id = $1", mid
-            )
-            if current is None:
-                raise ValueError(f"Memoria no encontrada: {memory_id}")
+            async with self.pool.acquire() as conn:
+                current = await conn.fetchrow(
+                    "SELECT tier FROM flash_memories WHERE id = $1", mid
+                )
+                if current is None:
+                    logger.error(f"Memoria no encontrada al degradar: {memory_id}")
+                    return None
 
-            new_tier = {"HOT": "WARM", "WARM": "COLD", "COLD": "COLD"}[current["tier"]]
+                new_tier = {"HOT": "WARM", "WARM": "COLD", "COLD": "COLD"}[current["tier"]]
 
-            row = await conn.fetchrow(
-                """
-                UPDATE flash_memories
-                SET tier = $1, updated_at = NOW()
-                WHERE id = $2
-                RETURNING id, content, type, tier, checksum, access_count,
-                          metadata, source, created_at, accessed_at, updated_at
-                """,
-                new_tier,
-                mid,
-            )
+                row = await conn.fetchrow(
+                    """
+                    UPDATE flash_memories
+                    SET tier = $1, updated_at = NOW()
+                    WHERE id = $2
+                    RETURNING id, content, type, tier, checksum, access_count,
+                              metadata, source, created_at, accessed_at, updated_at
+                    """,
+                    new_tier,
+                    mid,
+                )
 
-            await conn.execute(
-                """
-                INSERT INTO memory_audit_log (memory_id, action, details)
-                VALUES ($1, 'DEMOTE', $2)
-                """,
-                mid,
-                json.dumps({"from": current["tier"], "to": new_tier}),
-            )
+                await conn.execute(
+                    """
+                    INSERT INTO memory_audit_log (memory_id, action, details)
+                    VALUES ($1, 'DEMOTE', $2)
+                    """,
+                    mid,
+                    json.dumps({"from": current["tier"], "to": new_tier}),
+                )
 
-        logger.info(f"Memoria {memory_id} degradada: {current['tier']}→{new_tier}")
-        return self._row_to_memory(row)
+            logger.info(f"Memoria {memory_id} degradada: {current['tier']}→{new_tier}")
+            return self._row_to_memory(row)
+        except Exception as e:
+            logger.error(f"Error al degradar memoria {memory_id}: {e}")
+            return None
 
     async def get_stats(self) -> dict:
         """Estadísticas del sistema de memoria."""
-        async with self.pool.acquire() as conn:
-            total = await conn.fetchval("SELECT COUNT(*) FROM flash_memories")
-            tier_counts = await conn.fetch(
-                "SELECT tier, COUNT(*) as count FROM flash_memories GROUP BY tier"
-            )
-            type_counts = await conn.fetch(
-                "SELECT type, COUNT(*) as count FROM flash_memories GROUP BY type"
-            )
-            association_count = await conn.fetchval(
-                "SELECT COUNT(*) FROM memory_associations"
-            )
+        try:
+            async with self.pool.acquire() as conn:
+                total = await conn.fetchval("SELECT COUNT(*) FROM flash_memories")
+                tier_counts = await conn.fetch(
+                    "SELECT tier, COUNT(*) as count FROM flash_memories GROUP BY tier"
+                )
+                type_counts = await conn.fetch(
+                    "SELECT type, COUNT(*) as count FROM flash_memories GROUP BY type"
+                )
+                association_count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM memory_associations"
+                )
 
-        return {
-            "total_memories": total,
-            "by_tier": {row["tier"]: row["count"] for row in tier_counts},
-            "by_type": {row["type"]: row["count"] for row in type_counts},
-            "total_associations": association_count,
-        }
+            return {
+                "total_memories": total,
+                "by_tier": {row["tier"]: row["count"] for row in tier_counts},
+                "by_type": {row["type"]: row["count"] for row in type_counts},
+                "total_associations": association_count,
+            }
+        except Exception as e:
+            logger.error(f"Error en get_stats(): {e}")
+            return {
+                "total_memories": 0,
+                "by_tier": {},
+                "by_type": {},
+                "total_associations": 0,
+            }
 
     async def health_check(self) -> bool:
         """Verifica que Flash Memory está operativo."""
         try:
             async with self.pool.acquire() as conn:
                 result = await conn.fetchval("SELECT 1")
-                return result == 1
-        except Exception:
+                if result == 1:
+                    logger.debug("Flash Memory health check: OK")
+                    return True
+                logger.error("Flash Memory health check: Unexpected response")
+                return False
+        except Exception as e:
+            logger.error(f"Flash Memory health check failed: {e}")
             return False
 
     async def close(self):

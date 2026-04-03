@@ -52,6 +52,13 @@ from src.nodes.chat.exceptions import (
     RequestTimeoutError,
 )
 
+# Import database module at module level for proper mocking in tests
+try:
+    from src.db import get_database
+except ImportError:
+    # Stub for when db module isn't available (e.g., during testing)
+    get_database = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -447,7 +454,8 @@ class ChatNodeService:
             MemoryInjectionError: Memory system error
         """
         try:
-            from src.db import get_database
+            if get_database is None:
+                raise ImportError("Database module not available")
             
             db = await get_database()
             
@@ -756,7 +764,7 @@ class ChatNodeService:
             
             # Parse response
             try:
-                response_data = response.json()
+                response_data = await response.json()
             except json.JSONDecodeError as e:
                 self._logger.error(f"Invalid JSON from Ollama: {e}")
                 raise OllamaInvalidResponseError(f"Ollama returned invalid JSON: {e}")
@@ -838,7 +846,18 @@ class ChatNodeService:
             agent = ConversationAgent()
             validation_result = agent.validate_output(response)
             
-            if not validation_result or (isinstance(validation_result, dict) and not validation_result.get("valid", False)):
+            # Handle tuple return (is_valid, reason)
+            if isinstance(validation_result, tuple):
+                is_valid, reason = validation_result
+                if not is_valid:
+                    self._logger.warning(f"Agent validation failed: {reason}")
+                    return ValidationResult(
+                        is_valid=False,
+                        error_code=ErrorCode.ERROR_AGENT_VALIDATION_FAILED,
+                        error_message=reason,
+                    )
+            # Handle dict return (for backwards compatibility)
+            elif not validation_result or (isinstance(validation_result, dict) and not validation_result.get("valid", False)):
                 reason = validation_result.get("reason", "Agent validation failed") if isinstance(validation_result, dict) else "Agent validation failed"
                 self._logger.warning(f"Agent validation failed: {reason}")
                 return ValidationResult(
@@ -890,7 +909,8 @@ class ChatNodeService:
             MemoryInjectionError: Memory system error
         """
         try:
-            from src.db import get_database
+            if get_database is None:
+                raise ImportError("Database module not available")
             
             db = await get_database()
             

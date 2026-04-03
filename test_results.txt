@@ -1,0 +1,558 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.0, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\yeyoa\AppData\Local\Programs\Python\Python311\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\yeyoa\Desktop\yeyo-os
+configfile: pytest.ini
+plugins: anyio-4.13.0, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 71 items
+
+tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_existing_conversation FAILED [  1%]
+tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_new_conversation FAILED [  2%]
+tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_conversation_with_history FAILED [  4%]
+tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_conversation_stats FAILED [  5%]
+tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_user_preferences FAILED [  7%]
+tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_database_connection_error FAILED [  8%]
+tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_database_module_not_available FAILED [  9%]
+tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_conversation_not_found FAILED [ 11%]
+tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_conversation_no_user_id FAILED [ 12%]
+tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_conversation_partial_preferences FAILED [ 14%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_successful_ollama_call FAILED [ 15%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_call_with_history FAILED [ 16%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_call_with_unicode FAILED [ 18%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_call_with_long_message FAILED [ 19%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_connection_refused PASSED [ 21%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_connection_timeout FAILED [ 22%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_http_error_500 PASSED [ 23%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_model_not_found PASSED [ 25%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_invalid_json_response FAILED [ 26%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_missing_response_field FAILED [ 28%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_response_not_string FAILED [ 29%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_empty_response FAILED [ 30%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_whitespace_only_response FAILED [ 32%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_special_characters_in_response FAILED [ 33%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_very_long_response FAILED [ 35%]
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_concurrent_calls FAILED [ 36%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_valid_simple_message PASSED [ 38%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_valid_message_with_unicode PASSED [ 39%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_valid_message_max_length PASSED [ 40%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_valid_message_with_newlines PASSED [ 42%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_valid_message_with_special_chars PASSED [ 43%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_invalid_empty_string PASSED [ 45%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_invalid_only_whitespace PASSED [ 46%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_invalid_message_too_long PASSED [ 47%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_invalid_message_way_too_long PASSED [ 49%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_invalid_null_byte PASSED [ 50%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_valid_single_character PASSED [ 52%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_valid_single_emoji PASSED [ 53%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceInputValidation::test_valid_mixed_encodings PASSED [ 54%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceOutputValidation::test_valid_output_response PASSED [ 56%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceOutputValidation::test_invalid_output_empty PASSED [ 57%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceTypes::test_valid_chat_input PASSED [ 59%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceTypes::test_invalid_input_type_message PASSED [ 60%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceTypes::test_valid_output_creation PASSED [ 61%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceTypes::test_invalid_output_confidence_too_high PASSED [ 63%]
+tests/nodes/chat/test_service_integration.py::TestChatNodeServiceErrorHandling::test_process_message_empty_input PASSED [ 64%]
+tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_message_successful FAILED [ 66%]
+tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_message_creates_conversation FAILED [ 67%]
+tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_user_and_assistant_messages FAILED [ 69%]
+tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_message_with_metadata FAILED [ 70%]
+tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_database_connection_error FAILED [ 71%]
+tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_database_timeout_error FAILED [ 73%]
+tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_conversation_creation_failure FAILED [ 74%]
+tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_very_long_message FAILED [ 76%]
+tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_unicode_messages FAILED [ 77%]
+tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_without_user_id FAILED [ 78%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_valid_simple_response PASSED [ 80%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_valid_long_response PASSED [ 81%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_valid_response_with_newlines PASSED [ 83%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_valid_response_with_special_chars PASSED [ 84%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_valid_response_with_unicode PASSED [ 85%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_invalid_response_not_string PASSED [ 87%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_invalid_response_empty_string PASSED [ 88%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_invalid_response_whitespace_only PASSED [ 90%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_invalid_response_none PASSED [ 91%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_agent_validation_success FAILED [ 92%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_agent_validation_fails FAILED [ 94%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_agent_validation_error_propagates FAILED [ 95%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_response_with_leading_trailing_spaces PASSED [ 97%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_response_single_character PASSED [ 98%]
+tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_response_single_emoji PASSED [100%]
+
+================================== FAILURES ===================================
+_________ TestLoadConversationContext.test_load_existing_conversation _________
+tests\nodes\chat\test_load_context.py:52: in test_load_existing_conversation
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+___________ TestLoadConversationContext.test_load_new_conversation ____________
+tests\nodes\chat\test_load_context.py:70: in test_load_new_conversation
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+_______ TestLoadConversationContext.test_load_conversation_with_history _______
+tests\nodes\chat\test_load_context.py:96: in test_load_conversation_with_history
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+__________ TestLoadConversationContext.test_load_conversation_stats ___________
+tests\nodes\chat\test_load_context.py:119: in test_load_conversation_stats
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+___________ TestLoadConversationContext.test_load_user_preferences ____________
+tests\nodes\chat\test_load_context.py:145: in test_load_user_preferences
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+_________ TestLoadConversationContext.test_database_connection_error __________
+tests\nodes\chat\test_load_context.py:165: in test_database_connection_error
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+_______ TestLoadConversationContext.test_database_module_not_available ________
+tests\nodes\chat\test_load_context.py:177: in test_database_module_not_available
+    with patch("src.nodes.chat.service_integration.get_database", side_effect=ImportError("DB module not found")):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+___________ TestLoadConversationContext.test_conversation_not_found ___________
+tests\nodes\chat\test_load_context.py:192: in test_conversation_not_found
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+________ TestLoadConversationContext.test_load_conversation_no_user_id ________
+tests\nodes\chat\test_load_context.py:215: in test_load_conversation_no_user_id
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+___ TestLoadConversationContext.test_load_conversation_partial_preferences ____
+tests\nodes\chat\test_load_context.py:234: in test_load_conversation_partial_preferences
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+_________________ TestOllamaCall.test_successful_ollama_call __________________
+src\nodes\chat\service_integration.py:765: in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: argument of type 'coroutine' is not iterable
+
+During handling of the above exception, another exception occurred:
+tests\nodes\chat\test_ollama_call.py:56: in test_successful_ollama_call
+    result = await service._do_ollama_call(
+src\nodes\chat\service_integration.py:790: in _do_ollama_call
+    raise OllamaError(f"Unexpected error: {e}")
+E   src.nodes.chat.exceptions.OllamaError: Unexpected error: argument of type 'coroutine' is not iterable
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:789 Unexpected error calling Ollama: TypeError: argument of type 'coroutine' is not iterable
+Traceback (most recent call last):
+  File "C:\Users\yeyoa\Desktop\yeyo-os\src\nodes\chat\service_integration.py", line 765, in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'coroutine' is not iterable
+________________ TestOllamaCall.test_ollama_call_with_history _________________
+tests\nodes\chat\test_ollama_call.py:83: in test_ollama_call_with_history
+    result = await service._do_ollama_call(
+src\nodes\chat\service_integration.py:755: in _do_ollama_call
+    raise OllamaError(f"Ollama error: HTTP {response.status_code}")
+E   src.nodes.chat.exceptions.OllamaError: Ollama error: HTTP <AsyncMock name='mock.status_code' id='1845937880016'>
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:754 Ollama HTTP error <AsyncMock name='mock.status_code' id='1845937880016'>: <AsyncMock name='mock.text' id='1845938607056'>
+________________ TestOllamaCall.test_ollama_call_with_unicode _________________
+tests\nodes\chat\test_ollama_call.py:111: in test_ollama_call_with_unicode
+    result = await service._do_ollama_call(
+src\nodes\chat\service_integration.py:755: in _do_ollama_call
+    raise OllamaError(f"Ollama error: HTTP {response.status_code}")
+E   src.nodes.chat.exceptions.OllamaError: Ollama error: HTTP <AsyncMock name='mock.status_code' id='1845942502224'>
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:754 Ollama HTTP error <AsyncMock name='mock.status_code' id='1845942502224'>: <AsyncMock name='mock.text' id='1845942068368'>
+______________ TestOllamaCall.test_ollama_call_with_long_message ______________
+tests\nodes\chat\test_ollama_call.py:137: in test_ollama_call_with_long_message
+    result = await service._do_ollama_call(
+src\nodes\chat\service_integration.py:755: in _do_ollama_call
+    raise OllamaError(f"Ollama error: HTTP {response.status_code}")
+E   src.nodes.chat.exceptions.OllamaError: Ollama error: HTTP <AsyncMock name='mock.status_code' id='1845942626448'>
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:754 Ollama HTTP error <AsyncMock name='mock.status_code' id='1845942626448'>: <AsyncMock name='mock.text' id='1845942534544'>
+________________ TestOllamaCall.test_ollama_connection_timeout ________________
+src\nodes\chat\service_integration.py:731: in _do_ollama_call
+    response = await client.post(
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:2195: in _execute_mock_call
+    raise effect
+E   TimeoutError: Connection timeout
+
+During handling of the above exception, another exception occurred:
+tests\nodes\chat\test_ollama_call.py:173: in test_ollama_connection_timeout
+    await service._do_ollama_call(
+src\nodes\chat\service_integration.py:738: in _do_ollama_call
+    raise OllamaUnreachableError(f"Cannot connect to Ollama at {ollama_url}: {e}")
+E   src.nodes.chat.exceptions.OllamaUnreachableError: Cannot connect to Ollama at http://localhost:11434/api/generate: Connection timeout
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:737 Cannot connect to Ollama: Connection timeout
+______________ TestOllamaCall.test_ollama_invalid_json_response _______________
+src\nodes\chat\service_integration.py:765: in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: argument of type 'coroutine' is not iterable
+
+During handling of the above exception, another exception occurred:
+tests\nodes\chat\test_ollama_call.py:234: in test_ollama_invalid_json_response
+    await service._do_ollama_call(
+src\nodes\chat\service_integration.py:790: in _do_ollama_call
+    raise OllamaError(f"Unexpected error: {e}")
+E   src.nodes.chat.exceptions.OllamaError: Unexpected error: argument of type 'coroutine' is not iterable
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:789 Unexpected error calling Ollama: TypeError: argument of type 'coroutine' is not iterable
+Traceback (most recent call last):
+  File "C:\Users\yeyoa\Desktop\yeyo-os\src\nodes\chat\service_integration.py", line 765, in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'coroutine' is not iterable
+______________ TestOllamaCall.test_ollama_missing_response_field ______________
+src\nodes\chat\service_integration.py:765: in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: argument of type 'coroutine' is not iterable
+
+During handling of the above exception, another exception occurred:
+tests\nodes\chat\test_ollama_call.py:256: in test_ollama_missing_response_field
+    await service._do_ollama_call(
+src\nodes\chat\service_integration.py:790: in _do_ollama_call
+    raise OllamaError(f"Unexpected error: {e}")
+E   src.nodes.chat.exceptions.OllamaError: Unexpected error: argument of type 'coroutine' is not iterable
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:789 Unexpected error calling Ollama: TypeError: argument of type 'coroutine' is not iterable
+Traceback (most recent call last):
+  File "C:\Users\yeyoa\Desktop\yeyo-os\src\nodes\chat\service_integration.py", line 765, in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'coroutine' is not iterable
+_______________ TestOllamaCall.test_ollama_response_not_string ________________
+src\nodes\chat\service_integration.py:765: in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: argument of type 'coroutine' is not iterable
+
+During handling of the above exception, another exception occurred:
+tests\nodes\chat\test_ollama_call.py:278: in test_ollama_response_not_string
+    await service._do_ollama_call(
+src\nodes\chat\service_integration.py:790: in _do_ollama_call
+    raise OllamaError(f"Unexpected error: {e}")
+E   src.nodes.chat.exceptions.OllamaError: Unexpected error: argument of type 'coroutine' is not iterable
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:789 Unexpected error calling Ollama: TypeError: argument of type 'coroutine' is not iterable
+Traceback (most recent call last):
+  File "C:\Users\yeyoa\Desktop\yeyo-os\src\nodes\chat\service_integration.py", line 765, in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'coroutine' is not iterable
+__________________ TestOllamaCall.test_ollama_empty_response __________________
+src\nodes\chat\service_integration.py:765: in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: argument of type 'coroutine' is not iterable
+
+During handling of the above exception, another exception occurred:
+tests\nodes\chat\test_ollama_call.py:304: in test_ollama_empty_response
+    await service._do_ollama_call(
+src\nodes\chat\service_integration.py:790: in _do_ollama_call
+    raise OllamaError(f"Unexpected error: {e}")
+E   src.nodes.chat.exceptions.OllamaError: Unexpected error: argument of type 'coroutine' is not iterable
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:789 Unexpected error calling Ollama: TypeError: argument of type 'coroutine' is not iterable
+Traceback (most recent call last):
+  File "C:\Users\yeyoa\Desktop\yeyo-os\src\nodes\chat\service_integration.py", line 765, in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'coroutine' is not iterable
+_____________ TestOllamaCall.test_ollama_whitespace_only_response _____________
+src\nodes\chat\service_integration.py:765: in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: argument of type 'coroutine' is not iterable
+
+During handling of the above exception, another exception occurred:
+tests\nodes\chat\test_ollama_call.py:326: in test_ollama_whitespace_only_response
+    await service._do_ollama_call(
+src\nodes\chat\service_integration.py:790: in _do_ollama_call
+    raise OllamaError(f"Unexpected error: {e}")
+E   src.nodes.chat.exceptions.OllamaError: Unexpected error: argument of type 'coroutine' is not iterable
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:789 Unexpected error calling Ollama: TypeError: argument of type 'coroutine' is not iterable
+Traceback (most recent call last):
+  File "C:\Users\yeyoa\Desktop\yeyo-os\src\nodes\chat\service_integration.py", line 765, in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'coroutine' is not iterable
+__________ TestOllamaCall.test_ollama_special_characters_in_response __________
+src\nodes\chat\service_integration.py:765: in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: argument of type 'coroutine' is not iterable
+
+During handling of the above exception, another exception occurred:
+tests\nodes\chat\test_ollama_call.py:349: in test_ollama_special_characters_in_response
+    result = await service._do_ollama_call(
+src\nodes\chat\service_integration.py:790: in _do_ollama_call
+    raise OllamaError(f"Unexpected error: {e}")
+E   src.nodes.chat.exceptions.OllamaError: Unexpected error: argument of type 'coroutine' is not iterable
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:789 Unexpected error calling Ollama: TypeError: argument of type 'coroutine' is not iterable
+Traceback (most recent call last):
+  File "C:\Users\yeyoa\Desktop\yeyo-os\src\nodes\chat\service_integration.py", line 765, in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'coroutine' is not iterable
+________________ TestOllamaCall.test_ollama_very_long_response ________________
+src\nodes\chat\service_integration.py:765: in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: argument of type 'coroutine' is not iterable
+
+During handling of the above exception, another exception occurred:
+tests\nodes\chat\test_ollama_call.py:374: in test_ollama_very_long_response
+    result = await service._do_ollama_call(
+src\nodes\chat\service_integration.py:790: in _do_ollama_call
+    raise OllamaError(f"Unexpected error: {e}")
+E   src.nodes.chat.exceptions.OllamaError: Unexpected error: argument of type 'coroutine' is not iterable
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:789 Unexpected error calling Ollama: TypeError: argument of type 'coroutine' is not iterable
+Traceback (most recent call last):
+  File "C:\Users\yeyoa\Desktop\yeyo-os\src\nodes\chat\service_integration.py", line 765, in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'coroutine' is not iterable
+_________________ TestOllamaCall.test_ollama_concurrent_calls _________________
+src\nodes\chat\service_integration.py:765: in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: argument of type 'coroutine' is not iterable
+
+During handling of the above exception, another exception occurred:
+tests\nodes\chat\test_ollama_call.py:414: in test_ollama_concurrent_calls
+    results = await asyncio.gather(*tasks)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\nodes\chat\service_integration.py:790: in _do_ollama_call
+    raise OllamaError(f"Unexpected error: {e}")
+E   src.nodes.chat.exceptions.OllamaError: Unexpected error: argument of type 'coroutine' is not iterable
+------------------------------ Captured log call ------------------------------
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:789 Unexpected error calling Ollama: TypeError: argument of type 'coroutine' is not iterable
+Traceback (most recent call last):
+  File "C:\Users\yeyoa\Desktop\yeyo-os\src\nodes\chat\service_integration.py", line 765, in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'coroutine' is not iterable
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:789 Unexpected error calling Ollama: TypeError: argument of type 'coroutine' is not iterable
+Traceback (most recent call last):
+  File "C:\Users\yeyoa\Desktop\yeyo-os\src\nodes\chat\service_integration.py", line 765, in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'coroutine' is not iterable
+ERROR    src.nodes.chat.service_integration.ChatNodeService:service_integration.py:789 Unexpected error calling Ollama: TypeError: argument of type 'coroutine' is not iterable
+Traceback (most recent call last):
+  File "C:\Users\yeyoa\Desktop\yeyo-os\src\nodes\chat\service_integration.py", line 765, in _do_ollama_call
+    if "response" not in response_data:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'coroutine' is not iterable
+_______________ TestStoreInMemory.test_store_message_successful _______________
+tests\nodes\chat\test_store_memory.py:38: in test_store_message_successful
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+__________ TestStoreInMemory.test_store_message_creates_conversation __________
+tests\nodes\chat\test_store_memory.py:57: in test_store_message_creates_conversation
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+__________ TestStoreInMemory.test_store_user_and_assistant_messages ___________
+tests\nodes\chat\test_store_memory.py:76: in test_store_user_and_assistant_messages
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+_____________ TestStoreInMemory.test_store_message_with_metadata ______________
+tests\nodes\chat\test_store_memory.py:93: in test_store_message_with_metadata
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+______________ TestStoreInMemory.test_database_connection_error _______________
+tests\nodes\chat\test_store_memory.py:116: in test_database_connection_error
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+________________ TestStoreInMemory.test_database_timeout_error ________________
+tests\nodes\chat\test_store_memory.py:131: in test_database_timeout_error
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+____________ TestStoreInMemory.test_conversation_creation_failure _____________
+tests\nodes\chat\test_store_memory.py:146: in test_conversation_creation_failure
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+_______________ TestStoreInMemory.test_store_very_long_message ________________
+tests\nodes\chat\test_store_memory.py:165: in test_store_very_long_message
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+________________ TestStoreInMemory.test_store_unicode_messages ________________
+tests\nodes\chat\test_store_memory.py:182: in test_store_unicode_messages
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+________________ TestStoreInMemory.test_store_without_user_id _________________
+tests\nodes\chat\test_store_memory.py:197: in test_store_without_user_id
+    with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'get_database'
+___________ TestValidateOllamaOutput.test_agent_validation_success ____________
+tests\nodes\chat\test_validate_output.py:98: in test_agent_validation_success
+    with patch("src.nodes.chat.service_integration.ConversationAgent", return_value=mock_agent):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'ConversationAgent'
+____________ TestValidateOllamaOutput.test_agent_validation_fails _____________
+tests\nodes\chat\test_validate_output.py:109: in test_agent_validation_fails
+    with patch("src.nodes.chat.service_integration.ConversationAgent", return_value=mock_agent):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'ConversationAgent'
+_______ TestValidateOllamaOutput.test_agent_validation_error_propagates _______
+tests\nodes\chat\test_validate_output.py:120: in test_agent_validation_error_propagates
+    with patch("src.nodes.chat.service_integration.ConversationAgent", return_value=mock_agent):
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1427: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:1400: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'src.nodes.chat.service_integration' from 'C:\\Users\\yeyoa\\Desktop\\yeyo-os\\src\\nodes\\chat\\service_integration.py'> does not have the attribute 'ConversationAgent'
+============================== warnings summary ===============================
+tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_concurrent_calls
+  C:\Users\yeyoa\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_existing_conversation
+FAILED tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_new_conversation
+FAILED tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_conversation_with_history
+FAILED tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_conversation_stats
+FAILED tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_user_preferences
+FAILED tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_database_connection_error
+FAILED tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_database_module_not_available
+FAILED tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_conversation_not_found
+FAILED tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_conversation_no_user_id
+FAILED tests/nodes/chat/test_load_context.py::TestLoadConversationContext::test_load_conversation_partial_preferences
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_successful_ollama_call
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_call_with_history
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_call_with_unicode
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_call_with_long_message
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_connection_timeout
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_invalid_json_response
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_missing_response_field
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_response_not_string
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_empty_response
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_whitespace_only_response
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_special_characters_in_response
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_very_long_response
+FAILED tests/nodes/chat/test_ollama_call.py::TestOllamaCall::test_ollama_concurrent_calls
+FAILED tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_message_successful
+FAILED tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_message_creates_conversation
+FAILED tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_user_and_assistant_messages
+FAILED tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_message_with_metadata
+FAILED tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_database_connection_error
+FAILED tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_database_timeout_error
+FAILED tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_conversation_creation_failure
+FAILED tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_very_long_message
+FAILED tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_unicode_messages
+FAILED tests/nodes/chat/test_store_memory.py::TestStoreInMemory::test_store_without_user_id
+FAILED tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_agent_validation_success
+FAILED tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_agent_validation_fails
+FAILED tests/nodes/chat/test_validate_output.py::TestValidateOllamaOutput::test_agent_validation_error_propagates
+================== 36 failed, 35 passed, 1 warning in 2.31s ===================

@@ -42,11 +42,11 @@ class TestOllamaCall:
         expected_response = "This is a response from Ollama"
         
         mock_response = AsyncMock()
+        mock_response.status_code = 200
         mock_response.json = AsyncMock(return_value={
             "response": expected_response,
             "done": True,
         })
-        mock_response.status_code = 200
         
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.post = AsyncMock(
@@ -71,6 +71,7 @@ class TestOllamaCall:
         ]
         
         mock_response = AsyncMock()
+        mock_response.status_code = 200
         mock_response.json = AsyncMock(return_value={
             "response": expected_response,
             "done": True,
@@ -98,6 +99,7 @@ class TestOllamaCall:
         unicode_response = "Response with 中文 and emojis 🚀"
         
         mock_response = AsyncMock()
+        mock_response.status_code = 200
         mock_response.json = AsyncMock(return_value={
             "response": unicode_response,
             "done": True,
@@ -124,6 +126,7 @@ class TestOllamaCall:
         response = "Summary of the long message"
         
         mock_response = AsyncMock()
+        mock_response.status_code = 200
         mock_response.json = AsyncMock(return_value={
             "response": response,
             "done": True,

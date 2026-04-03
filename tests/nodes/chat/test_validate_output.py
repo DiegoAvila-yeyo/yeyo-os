@@ -93,10 +93,10 @@ class TestValidateOllamaOutput:
     def test_agent_validation_success(self, service):
         """Test successful agent validation."""
         mock_agent = Mock()
-        mock_agent.validate_output = Mock(return_value={"valid": True})
+        mock_agent.validate_output = Mock(return_value=(True, ""))
         
-        with patch("src.nodes.chat.service_integration.ConversationAgent", return_value=mock_agent):
-            result = service._validate_ollama_output("Valid response")
+        with patch("src.agents.conversation.ConversationAgent", return_value=mock_agent):
+            result = service._validate_ollama_output("Valid response with good content that passes validation")
         
         assert result.is_valid
         mock_agent.validate_output.assert_called_once()
@@ -104,9 +104,9 @@ class TestValidateOllamaOutput:
     def test_agent_validation_fails(self, service):
         """Test failed agent validation."""
         mock_agent = Mock()
-        mock_agent.validate_output = Mock(return_value={"valid": False, "reason": "Hallucination detected"})
+        mock_agent.validate_output = Mock(return_value=(False, "Hallucination detected"))
         
-        with patch("src.nodes.chat.service_integration.ConversationAgent", return_value=mock_agent):
+        with patch("src.agents.conversation.ConversationAgent", return_value=mock_agent):
             result = service._validate_ollama_output("Response with hallucination")
         
         assert not result.is_valid
@@ -117,8 +117,8 @@ class TestValidateOllamaOutput:
         mock_agent = Mock()
         mock_agent.validate_output = Mock(side_effect=AgentValidationError("Validation failed"))
         
-        with patch("src.nodes.chat.service_integration.ConversationAgent", return_value=mock_agent):
-            result = service._validate_ollama_output("Response")
+        with patch("src.agents.conversation.ConversationAgent", return_value=mock_agent):
+            result = service._validate_ollama_output("Response with enough content to pass initial checks but agent fails")
         
         assert not result.is_valid
         assert result.error_code == ErrorCode.ERROR_AGENT_VALIDATION_FAILED

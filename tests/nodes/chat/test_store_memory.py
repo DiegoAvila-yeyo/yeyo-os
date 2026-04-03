@@ -34,8 +34,8 @@ class TestStoreInMemory:
     async def test_store_message_successful(self, service):
         """Test successful message storage."""
         mock_db = AsyncMock()
-        
-        with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+        mock_get_database = AsyncMock(return_value=mock_db)
+        with patch("src.db.get_database", mock_get_database):
             await service._store_in_memory(
                 conversation_id="conv-123",
                 user_message="Hello",
@@ -54,7 +54,7 @@ class TestStoreInMemory:
         # Simulate new conversation
         conversation_id = None
         
-        with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+        with patch("src.db.get_database", return_value=mock_db):
             with patch("uuid.uuid4", return_value=MagicMock(hex="test-id-123")):
                 await service._store_in_memory(
                     conversation_id=conversation_id,
@@ -73,7 +73,7 @@ class TestStoreInMemory:
         user_msg = "What is AI?"
         assistant_msg = "AI is Artificial Intelligence..."
         
-        with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+        with patch("src.db.get_database", return_value=mock_db):
             await service._store_in_memory(
                 conversation_id="conv-123",
                 user_message=user_msg,
@@ -89,8 +89,8 @@ class TestStoreInMemory:
     async def test_store_message_with_metadata(self, service):
         """Test message storage includes metadata."""
         mock_db = AsyncMock()
-        
-        with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+        mock_get_database = AsyncMock(return_value=mock_db)
+        with patch("src.db.get_database", mock_get_database):
             await service._store_in_memory(
                 conversation_id="conv-123",
                 user_message="Test message",
@@ -113,7 +113,7 @@ class TestStoreInMemory:
         mock_db = AsyncMock()
         mock_db.store_message = AsyncMock(side_effect=ConnectionError("DB connection failed"))
         
-        with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+        with patch("src.db.get_database", return_value=mock_db):
             with pytest.raises(DatabaseError):
                 await service._store_in_memory(
                     conversation_id="conv-123",
@@ -128,7 +128,7 @@ class TestStoreInMemory:
         mock_db = AsyncMock()
         mock_db.store_message = AsyncMock(side_effect=TimeoutError("DB timeout"))
         
-        with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+        with patch("src.db.get_database", return_value=mock_db):
             with pytest.raises(DatabaseError):
                 await service._store_in_memory(
                     conversation_id="conv-123",
@@ -143,7 +143,7 @@ class TestStoreInMemory:
         mock_db = AsyncMock()
         mock_db.create_conversation = AsyncMock(side_effect=DatabaseError("Cannot create"))
         
-        with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+        with patch("src.db.get_database", return_value=mock_db):
             with pytest.raises(DatabaseError):
                 await service._store_in_memory(
                     conversation_id=None,
@@ -162,7 +162,7 @@ class TestStoreInMemory:
         mock_db = AsyncMock()
         long_message = "a" * 50000  # 50KB message
         
-        with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+        with patch("src.db.get_database", return_value=mock_db):
             await service._store_in_memory(
                 conversation_id="conv-123",
                 user_message=long_message,
@@ -179,7 +179,7 @@ class TestStoreInMemory:
         mock_db = AsyncMock()
         unicode_message = "Message with 中文, العربية, and emojis 🚀"
         
-        with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+        with patch("src.db.get_database", return_value=mock_db):
             await service._store_in_memory(
                 conversation_id="conv-123",
                 user_message=unicode_message,
@@ -193,8 +193,8 @@ class TestStoreInMemory:
     async def test_store_without_user_id(self, service):
         """Test storing message without user_id."""
         mock_db = AsyncMock()
-        
-        with patch("src.nodes.chat.service_integration.get_database", return_value=mock_db):
+        mock_get_database = AsyncMock(return_value=mock_db)
+        with patch("src.db.get_database", mock_get_database):
             await service._store_in_memory(
                 conversation_id="conv-123",
                 user_message="Anonymous message",
@@ -208,3 +208,5 @@ class TestStoreInMemory:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
+
+

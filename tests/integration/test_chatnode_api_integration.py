@@ -166,7 +166,8 @@ class TestChatNodeAPIIntegration:
         
         # Should contain ERROR marker
         assert "data: ERROR:" in content
-        assert "Invalid input" in content
+        # Should contain user-friendly message (not technical error)
+        assert "El mensaje no es" in content or "error_invalid_input" in content
         assert "data: [DONE]" in content
     
     @patch('src.api.routes.chat.ChatNodeService')

@@ -24,9 +24,51 @@ logger = logging.getLogger("yeyoos.api.chat")
 
 # ChatNode integration
 from src.nodes.chat.service_integration import ChatNodeService
-from src.nodes.chat.types import ChatNodeError
+from src.nodes.chat.types import ChatNodeError, ErrorCode
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+
+
+# ========== Error Handler ==========
+
+def _map_error_to_user_message(error_code: str) -> str:
+    """
+    Map ChatNode error codes to user-friendly messages for frontend display.
+    
+    Args:
+        error_code: ErrorCode from ChatNode
+        
+    Returns:
+        User-friendly error message (non-technical)
+    """
+    error_map = {
+        ErrorCode.ERROR_INVALID_INPUT: "El mensaje no es válido. Por favor, verifica el contenido.",
+        ErrorCode.ERROR_MESSAGE_EMPTY: "El mensaje no puede estar vacío.",
+        ErrorCode.ERROR_MESSAGE_TOO_LONG: "El mensaje es demasiado largo. Máximo 10,000 caracteres.",
+        ErrorCode.ERROR_INVALID_CONVERSATION_ID: "La conversación no existe o ha expirado.",
+        ErrorCode.ERROR_INVALID_TONE: "El tono de conversación no es válido.",
+        ErrorCode.ERROR_INVALID_TYPE: "El tipo de conversación no es válido.",
+        
+        ErrorCode.ERROR_AGENT_VALIDATION_FAILED: "La respuesta no pasó validación de calidad. Por favor, intenta de nuevo.",
+        ErrorCode.ERROR_SYSTEM_PROMPT_GENERATION: "Error al generar el contexto. Por favor, intenta de nuevo.",
+        
+        ErrorCode.ERROR_OLLAMA_UNREACHABLE: "El servicio de IA no está disponible. Por favor, intenta más tarde.",
+        ErrorCode.ERROR_OLLAMA_TIMEOUT: "La solicitud tardó demasiado. Por favor, intenta de nuevo.",
+        ErrorCode.ERROR_OLLAMA_OUT_OF_MEMORY: "El servicio de IA está sobrecargado. Por favor, intenta más tarde.",
+        ErrorCode.ERROR_OLLAMA_INVALID_RESPONSE: "Respuesta inválida del servicio de IA. Por favor, intenta de nuevo.",
+        
+        ErrorCode.ERROR_OUTPUT_VALIDATION_FAILED: "La respuesta generada no es válida. Por favor, intenta de nuevo.",
+        ErrorCode.ERROR_INVALID_CONFIDENCE: "Error de calidad en la respuesta. Por favor, intenta de nuevo.",
+        
+        ErrorCode.ERROR_DATABASE: "Error de conexión a la base de datos. Por favor, intenta más tarde.",
+        ErrorCode.ERROR_MEMORY_INJECTION: "Error al cargar el contexto. Por favor, intenta de nuevo.",
+        ErrorCode.ERROR_INTERNAL_SERVER_ERROR: "Error interno del servidor. Por favor, intenta más tarde.",
+        
+        ErrorCode.ERROR_RATE_LIMIT_EXCEEDED: "Demasiadas solicitudes. Por favor, espera un momento antes de intentar de nuevo.",
+        ErrorCode.ERROR_REQUEST_TIMEOUT: "La solicitud expiró. Por favor, intenta de nuevo.",
+    }
+    
+    return error_map.get(error_code, "Ha ocurrido un error desconocido. Por favor, intenta de nuevo.")
 
 
 # ========== Request/Response Models ==========
@@ -175,6 +217,13 @@ async def send_message_stream(
             SSE generator que llama ChatNodeService y streams la respuesta.
             Formato: "data: <chunk>\n\n" por línea
             Termina con: "data: [DONE]\n\n"
+            
+            Maneja excepciones específicas de ChatNode:
+            - OllamaError (no alcanzable, timeout, out of memory)
+            - DatabaseError (fallos de conexión)
+            - InputValidationError (entrada inválida)
+            - AgentValidationError (validación del agente falló)
+            - Genéricas (errores internos inesperados)
             """
             chat_node_service = ChatNodeService()
             full_response = ""
@@ -192,7 +241,9 @@ async def send_message_stream(
                         f"ChatNodeError: {result.error}",
                         extra={"error_code": result.error_code, "conversation_id": conv_id}
                     )
-                    yield f"data: ERROR:{result.error_code}:{result.error}\n\n"
+                    # Mapear error code a mensaje user-friendly
+                    error_message = _map_error_to_user_message(result.error_code)
+                    yield f"data: ERROR:{result.error_code}:{error_message}\n\n"
                     yield f"data: [DONE]\n\n"
                     return
                 
@@ -214,7 +265,8 @@ async def send_message_stream(
                 
             except Exception as e:
                 logger.error(f"Error en event_generator: {e}", exc_info=True)
-                yield f"data: ERROR:INTERNAL:{str(e)}\n\n"
+                error_message = "Ha ocurrido un error interno. Por favor, intenta de nuevo."
+                yield f"data: ERROR:INTERNAL:{error_message}\n\n"
                 yield f"data: [DONE]\n\n"
 
         return StreamingResponse(

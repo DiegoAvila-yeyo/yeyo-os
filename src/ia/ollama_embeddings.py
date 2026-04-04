@@ -23,7 +23,7 @@ class OllamaEmbeddingService:
     def __init__(
         self,
         host: str = "http://localhost:11434",
-        model: str = "qwen2.5-coder:7b",
+        model: str = "nomic-embed-text",
         timeout: float = 30.0,
     ):
         self.host = host
@@ -34,7 +34,7 @@ class OllamaEmbeddingService:
 
     @property
     def dimension(self) -> int:
-        return self._dimension or 384
+        return self._dimension or 768
 
     def generate(self, text: str) -> list[float]:
         """Genera embedding para un texto via Ollama."""

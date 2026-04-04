@@ -72,58 +72,288 @@ Tú: "¿Cómo se llamaba el logo que hicimos en febrero?"
 
 Igual que las neuronas: las conexiones usadas se fortalecen, las ignoradas se debilitan (pero NUNCA desaparecen).
 
-## Tabla PostgreSQL
+## Esquema real de memoria
+
+Conceptualmente sigue siendo "una sola memoria", pero operativamente conviene usar:
+
+- **una tabla central canónica**;
+- **tablas auxiliares** para asociaciones, auditoría, feedback, calidad, entrenamiento y sincronización.
+
+Así todo el sistema se conecta a la misma memoria sin convertir una sola fila en un monstruo imposible de mantener.
+
+## Tabla central canónica
+
+La tabla central debe alinearse con el adaptador actual de `src/memory/flash_memory.py`, que ya usa `flash_memories`, `source`, `namespace` y `memory_audit_log`.
 
 ```sql
-CREATE TABLE flash_memory (
+CREATE TABLE flash_memories (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    
-    -- Contenido
-    tipo            VARCHAR(50) NOT NULL,  -- 'conversacion', 'hecho', 'preferencia', 'archivo', 'decision'
-    contenido       TEXT NOT NULL,
-    resumen         TEXT,
-    metadata        JSONB DEFAULT '{}',
-    
+
+    -- Contenido base
+    content         TEXT NOT NULL,
+    summary         TEXT,
+    type            VARCHAR(50) NOT NULL,
+        -- conversation | preference | fact | correction | skill
+        -- decision | file | research_result | benchmark | pattern
+        -- training_example | tool_trace | node_output
+
+    -- Organización lógica
+    source          VARCHAR(100) NOT NULL DEFAULT 'user',
+    namespace       VARCHAR(200) NOT NULL DEFAULT 'chat:usuario',
+
+    -- Contexto y payload
+    metadata        JSONB NOT NULL DEFAULT '{}',
+    checksum        CHAR(64) NOT NULL,
+
     -- Vector semántico
-    embedding       vector(768),           -- nomic-embed-text via Ollama
-    
-    -- Relevancia
-    importancia     FLOAT DEFAULT 0.5,     -- 0.0 a 1.0
-    access_count    INTEGER DEFAULT 0,
-    tier            VARCHAR(10) DEFAULT 'WARM',  -- HOT, WARM, COLD
-    
-    -- Asociaciones (red neuronal de recuerdos)
-    asociaciones    UUID[] DEFAULT '{}',   -- IDs de recuerdos relacionados
-    
-    -- Temporal
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    last_accessed   TIMESTAMPTZ DEFAULT NOW(),
-    
-    -- Portabilidad
-    version         INTEGER DEFAULT 1
+    embedding       vector(768),
+
+    -- Relevancia y temperatura
+    importance      FLOAT NOT NULL DEFAULT 0.5,
+    access_count    INTEGER NOT NULL DEFAULT 0,
+    tier            VARCHAR(10) NOT NULL DEFAULT 'WARM',
+    pinned          BOOLEAN NOT NULL DEFAULT FALSE,
+    invalid         BOOLEAN NOT NULL DEFAULT FALSE,
+
+    -- Trazabilidad temporal
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    accessed_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Versionado lógico
+    version         INTEGER NOT NULL DEFAULT 1
 );
 
--- Índices críticos
-CREATE INDEX idx_flash_embedding ON flash_memory USING ivfflat (embedding vector_cosine_ops);
-CREATE INDEX idx_flash_tier ON flash_memory (tier);
-CREATE INDEX idx_flash_tipo ON flash_memory (tipo);
-CREATE INDEX idx_flash_last_accessed ON flash_memory (last_accessed);
-CREATE INDEX idx_flash_importancia ON flash_memory (importancia DESC);
+CREATE INDEX idx_flash_embedding
+    ON flash_memories USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX idx_flash_tier ON flash_memories (tier);
+CREATE INDEX idx_flash_type ON flash_memories (type);
+CREATE INDEX idx_flash_namespace ON flash_memories (namespace);
+CREATE INDEX idx_flash_source ON flash_memories (source);
+CREATE INDEX idx_flash_accessed_at ON flash_memories (accessed_at DESC);
+CREATE INDEX idx_flash_importance ON flash_memories (importance DESC);
+CREATE INDEX idx_flash_metadata_gin ON flash_memories USING gin (metadata);
 ```
 
-## Asociaciones: Red Neuronal de Recuerdos
+> **Nota de unificación:** la versión vieja del doc usaba `flash_memory` en singular.  
+> La forma canónica debe ser `flash_memories`, porque coincide con el código real del adaptador.
 
-Cada recuerdo puede tener asociaciones con otros recuerdos, formando una red:
+## Tablas auxiliares
 
+### 1. Asociaciones entre recuerdos
+
+```sql
+CREATE TABLE memory_links (
+    id                  BIGSERIAL PRIMARY KEY,
+    from_memory_id      UUID NOT NULL REFERENCES flash_memories(id),
+    to_memory_id        UUID NOT NULL REFERENCES flash_memories(id),
+    relation_type       VARCHAR(50) NOT NULL,
+        -- related | caused_by | corrects | derived_from | example_of
+        -- used_in | produced_by | verified_by | preferred_with
+    weight              FLOAT NOT NULL DEFAULT 0.5,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    UNIQUE (from_memory_id, to_memory_id, relation_type)
+);
+
+CREATE INDEX idx_memory_links_from ON memory_links (from_memory_id);
+CREATE INDEX idx_memory_links_to ON memory_links (to_memory_id);
 ```
-[Logo cyberpunk #4523]
-    ├── asociado → [Preferencia: estilo cyberpunk]
-    ├── asociado → [Canal YouTube: NuevoNombre]
-    ├── asociado → [Conversación sobre marca X]
-    └── asociado → [Archivo: img_0847.png]
+
+### 2. Auditoría inmutable
+
+```sql
+CREATE TABLE memory_audit_log (
+    id              BIGSERIAL PRIMARY KEY,
+    memory_id       UUID NOT NULL REFERENCES flash_memories(id),
+    action          VARCHAR(50) NOT NULL,
+        -- CREATE | UPDATE | ACCESS | PROMOTE | DEMOTE | INVALIDATE | LINK
+    details         JSONB NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_memory_audit_memory_id ON memory_audit_log (memory_id);
+CREATE INDEX idx_memory_audit_action ON memory_audit_log (action);
 ```
 
-Cuando buscas un recuerdo, sus asociaciones también se cargan, dando contexto completo sin necesidad de múltiples queries.
+### 3. Feedback del usuario
+
+```sql
+CREATE TABLE memory_feedback (
+    id                  BIGSERIAL PRIMARY KEY,
+    memory_id           UUID NOT NULL REFERENCES flash_memories(id),
+    feedback_type       VARCHAR(30) NOT NULL,
+        -- positive | negative | correction | favorite | reject
+    score               FLOAT,
+    comment             TEXT,
+    source              VARCHAR(50) NOT NULL DEFAULT 'user',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### 4. Señales de calidad y verificación
+
+```sql
+CREATE TABLE memory_quality_signals (
+    id                      BIGSERIAL PRIMARY KEY,
+    memory_id               UUID NOT NULL REFERENCES flash_memories(id),
+    correctness_score       FLOAT,
+    security_score          FLOAT,
+    compatibility_score     FLOAT,
+    confidence_score        FLOAT,
+    verification_status     VARCHAR(30) NOT NULL DEFAULT 'unverified',
+        -- unverified | partial | verified | rejected
+    benchmark_name          VARCHAR(100),
+    benchmark_result        JSONB DEFAULT '{}',
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### 5. Corpus de entrenamiento del Dojo / Hack
+
+```sql
+CREATE TABLE memory_training_corpus (
+    id                      BIGSERIAL PRIMARY KEY,
+    memory_id               UUID NOT NULL REFERENCES flash_memories(id),
+    corpus_type             VARCHAR(50) NOT NULL,
+        -- code_example | correction_pair | preference_pair | tool_trace
+        -- benchmark_case | refusal_example | reasoning_example
+    split                   VARCHAR(20) NOT NULL DEFAULT 'train',
+        -- train | valid | test
+    promoted                BOOLEAN NOT NULL DEFAULT FALSE,
+    promoted_by             VARCHAR(50) NOT NULL DEFAULT 'dojo',
+    notes                   JSONB NOT NULL DEFAULT '{}',
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### 6. Sincronización de YeyoNet
+
+```sql
+CREATE TABLE memory_sync_queue (
+    id                  BIGSERIAL PRIMARY KEY,
+    memory_id           UUID NOT NULL REFERENCES flash_memories(id),
+    target_node         VARCHAR(100) NOT NULL,
+    sync_status         VARCHAR(30) NOT NULL DEFAULT 'pending',
+        -- pending | sent | applied | failed | skipped
+    sync_reason         VARCHAR(50) NOT NULL,
+        -- hot_context | promoted_lora | benchmark_result | user_preference
+        -- verified_solution | node_dataset
+    payload             JSONB NOT NULL DEFAULT '{}',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    synced_at           TIMESTAMPTZ
+);
+```
+
+## Cómo se conecta todo en la memoria
+
+### Chat
+
+Guarda:
+
+- conversaciones útiles;
+- preferencias;
+- decisiones;
+- correcciones del usuario.
+
+Namespaces típicos:
+
+- `chat:usuario`
+- `chat:sistema`
+- `preferencias:usuario`
+
+### Investigador
+
+Guarda:
+
+- soluciones verificadas;
+- fuentes útiles;
+- candidatos ganadores;
+- ensamblajes exitosos;
+- errores descartados.
+
+Namespaces típicos:
+
+- `investigador:consultas`
+- `investigador:soluciones`
+- `investigador:fuentes`
+
+### Quality Kernel
+
+No necesita crear siempre nuevos recuerdos; muchas veces enriquece recuerdos existentes con:
+
+- `memory_quality_signals`
+- `memory_audit_log`
+
+Namespaces típicos:
+
+- `quality:benchmarks`
+- `quality:verification`
+
+### YeyoDojo / YeyoHack
+
+Usan memoria como:
+
+- biblioteca de ejemplos buenos;
+- historial de errores;
+- dataset curado;
+- base para adapters/LoRAs promovidos.
+
+Namespaces típicos:
+
+- `dojo:dataset`
+- `dojo:errores`
+- `hack:redteam`
+- `hack:blueteam`
+
+### Nodos
+
+Cada nodo escribe en la misma memoria, pero con su namespace propio:
+
+- `node:imagen`
+- `node:video`
+- `node:codigo`
+- `node:archivos`
+
+### YeyoNet
+
+No sincroniza todo el cerebro. Sincroniza selectivamente:
+
+- preferencias estables;
+- soluciones verificadas;
+- adapters/LoRAs promovidos;
+- datasets aprobados;
+- benchmark results relevantes.
+
+Eso se gobierna con `memory_sync_queue`.
+
+## Flujo real
+
+```text
+Usuario / nodo / agente
+    -> genera evento o resultado
+    -> YeyoOrquestador decide si vale la pena recordarlo
+    -> Flash Memory guarda en flash_memories
+    -> links / feedback / quality / training flags se agregan en tablas auxiliares
+    -> retrieval futuro usa:
+         1. tier
+         2. embedding
+         3. namespace
+         4. quality_signals
+         5. links asociados
+    -> si una memoria es útil para otras máquinas:
+         memory_sync_queue -> YeyoNet
+```
+
+## Regla de oro de escritura
+
+No todo se guarda como fila nueva. Solo existen tres movimientos válidos:
+
+1. **crear memoria nueva**;
+2. **reforzar memoria existente**;
+3. **enriquecer memoria existente** con links, feedback, quality o training flags.
+
+Así la memoria deja de ser historial bruto y se vuelve una red viva de hechos, decisiones, errores, soluciones y patrones.
 
 ## Implementación Python
 

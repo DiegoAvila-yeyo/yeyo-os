@@ -4,6 +4,78 @@
 
 El Code Dojo es el sistema de auto-entrenamiento de programación de YeyoOS. **12 agentes especializados** trabajan como un equipo de desarrollo completo, todos corriendo sobre el **mismo modelo** con diferentes system prompts. Cada noche, la IA entrena con ~1,800 desafíos de código en la GTX 1060 3GB. El resultado: una IA que programa cada vez más como tú.
 
+## Qué hacemos cuando el modelo pequeño "está tonto"
+
+Los modelos pequeños no mejoran por magia ni por prompt engineering solamente. El enfoque del Dojo es hacer que dependan menos de inteligencia cruda y más de:
+
+1. biblioteca de referencia de alta calidad;
+2. crítica estructurada;
+3. memoria útil;
+4. verificación real;
+5. adapters y fine-tuning.
+
+### Stack práctico para mejorar modelos pequeños
+
+#### `Unsloth`
+
+Lo usaríamos para:
+
+- LoRA y QLoRA rápidas;
+- iteración barata con menos VRAM;
+- pruebas rápidas sobre modelos pequeños;
+- RL eficiente;
+- datasets y recetas de entrenamiento rápidas.
+
+**Rol en YeyoOS:** laboratorio de entrenamiento ágil para `YeyoDojo`.
+
+**Cuándo usarlo:** cuando queremos mejorar un modelo pequeño sin una infraestructura pesada.
+
+#### `Axolotl`
+
+Lo usaríamos para:
+
+- pipelines de entrenamiento más serios;
+- configuraciones YAML reproducibles;
+- QLoRA, DPO, reward modelling y RL;
+- runs largos o más formales;
+- entrenamiento apoyado por el nodo central de `YeyoNet`.
+
+**Rol en YeyoOS:** pipeline de entrenamiento robusto para `YeyoDojo` y `YeyoHack`.
+
+**Cuándo usarlo:** cuando ya sabemos qué queremos entrenar y necesitamos medir, repetir y comparar runs.
+
+### Regla práctica
+
+```text
+Quiero iterar rápido con poco VRAM
+  -> Unsloth
+
+Quiero entrenamiento serio, repetible y medible
+  -> Axolotl
+```
+
+### Qué sí puede mejorar
+
+- capacidad del modelo para seguir el pipeline del Dojo;
+- estilo del usuario;
+- uso correcto de tools;
+- calidad en un dominio concreto;
+- rechazo de errores recurrentes.
+
+### Qué NO debemos esperar
+
+- que un modelo pequeño entienda cualquier arquitectura compleja solo por entrenarlo;
+- que el fine-tuning reemplace al `Investigador`;
+- que los adapters arreglen ausencia de memoria o falta de quality gates.
+
+Por eso el Dojo siempre se apoya en:
+
+- `Flash Memory`
+- `Investigador`
+- tests reales
+- quality gates
+- feedback humano
+
 ## Los 12 Agentes Especializados
 
 ```
@@ -232,6 +304,18 @@ Mientras duermes, el Dojo entrena con desafíos de programación:
 │    - Concurrencia y paralelismo                 │
 │    - Machine Learning básico                    │
 └─────────────────────────────────────────────────┘
+```
+
+### Pipeline del entrenamiento nocturno
+
+```text
+Flash Memory + biblioteca curada + errores aprendidos + benchmarks
+    -> dataset de entrenamiento
+    -> Unsloth (iteración rápida) o Axolotl (run formal)
+    -> LoRA / QLoRA / adapter
+    -> evaluación del Dojo
+    -> si mejora métricas, se promociona
+    -> si no mejora, se descarta
 ```
 
 ## RAG para Código (Deep Dive)

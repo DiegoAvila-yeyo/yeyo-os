@@ -644,6 +644,8 @@ Esto permite que otra sesión continúe sin volver a descubrir el trabajo.
 |---|---|---|---|
 | `mem0ai/mem0` | extracción/actualización de recuerdos | adaptación parcial | `src/memory/` |
 | `ollama/ollama` | runtime por API | integración directa | `src/ia/` |
+| `unslothai/unsloth` | fine-tuning eficiente, LoRA/QLoRA, RL liviano, recetas de datos | integración directa | futuro módulo de entrenamiento / `YeyoDojo` |
+| `axolotl-ai-cloud/axolotl` | fine-tuning robusto, configs YAML, QLoRA/DPO/RL, multi-GPU | integración directa | futuro módulo de entrenamiento / `YeyoDojo` / `YeyoHack` |
 | `Angeles-HO/Telvyn` | `session_runtime`, `task_memory`, routing | adaptación parcial | `src/chat/`, `src/orquestador/`, `src/memory/` |
 | `prabureddy/ai-research-agent-mcp` | research pipeline patterns | adaptación parcial | `src/investigador/` |
 | `kortix-ai/suna` | sandbox/runtime de tools | adaptación parcial | `src/security/`, `src/tools/`, `src/nodes/code/` |
@@ -664,6 +666,92 @@ Si una sesión futura duda qué hacer, el orden es:
 5. extraer solo el módulo necesario;
 6. adaptarlo a interfaces de YeyoOS;
 7. verificarlo antes de integrarlo.
+
+---
+
+## Cómo tratamos el problema de los modelos pequeños
+
+Los modelos pequeños no se "arreglan" solo con prompts. En YeyoOS el enfoque correcto es combinar:
+
+1. **menos carga cognitiva al modelo**;
+2. **mejor contexto y memoria**;
+3. **verificación real**;
+4. **fine-tuning/adapters cuando el hardware lo permita**.
+
+### Qué resuelve cada repositorio
+
+#### `unslothai/unsloth`
+
+Sirve para:
+
+- sacar más rendimiento de modelos chicos con menos VRAM;
+- LoRA y QLoRA más rápidas;
+- RL más eficiente;
+- creación y curación de datasets;
+- exportación de modelos/adapters.
+
+En YeyoOS encaja como:
+
+- stack de entrenamiento rápido para `YeyoDojo`;
+- laboratorio de experimentación para mejorar modelos chicos;
+- opción preferida cuando el hardware es limitado y se quiere iterar rápido.
+
+**Conclusión:** es la mejor opción para prototipar y exprimir modelos pequeños en entorno de recursos ajustados.
+
+#### `axolotl-ai-cloud/axolotl`
+
+Sirve para:
+
+- pipelines de fine-tuning más serios y reproducibles;
+- configuraciones YAML reutilizables;
+- LoRA, QLoRA, DPO, RL, reward modelling;
+- entrenamiento multi-GPU y multi-nodo;
+- evaluación/quantización/inferencia dentro del mismo flujo.
+
+En YeyoOS encaja como:
+
+- stack de entrenamiento robusto para el nodo central de `YeyoNet`;
+- backend de entrenamiento formal para `YeyoDojo` y `YeyoHack`;
+- opción preferida para runs largos, repetibles y escalables.
+
+**Conclusión:** es la mejor opción para entrenamientos "de producción" o cuando YeyoNet ya tenga una máquina central potente.
+
+### Regla operativa
+
+- si queremos **iterar rápido y barato** -> `Unsloth`
+- si queremos **pipeline serio, repetible y escalable** -> `Axolotl`
+- si el hardware local no alcanza -> usar `YeyoNet` o delegar entrenamiento
+
+### Cómo se conecta con YeyoOS
+
+```text
+Flash Memory + feedback + errores aprendidos + benchmark
+    -> dataset curado
+    -> Unsloth o Axolotl
+    -> LoRA / adapter / modelo refinado
+    -> evaluación
+    -> exportación
+    -> runtime de inferencia (Ollama o formato compatible)
+```
+
+### Qué NO hace ninguno de los dos
+
+Ni `Unsloth` ni `Axolotl` convierten por sí solos un modelo pequeño en un genio.
+
+Lo que sí hacen es:
+
+- aprovechar mejor datos buenos;
+- reducir costo de ajuste;
+- volver el entrenamiento más sistemático;
+- mejorar un modelo dentro de un dominio concreto.
+
+Por eso en YeyoOS siguen siendo obligatorios:
+
+- `Flash Memory`
+- `Investigador`
+- `Quality Kernel`
+- `YeyoDojo`
+- benchmarks y feedback real
 
 ---
 

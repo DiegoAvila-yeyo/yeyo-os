@@ -18,7 +18,7 @@ El stack de YeyoOS ya no se organiza alrededor de un "OS con IA encima", sino al
 | Investigador | Python + tools propias | Buscar, evaluar, ensamblar, verificar |
 | Runtime seguro | Bash/sandbox + permisos | Ejecución real de herramientas y código |
 | Calidad | pytest + Jest + Playwright + linters | Verificación, benchmarks, no-slop |
-| Aprendizaje | PyTorch + Transformers | YeyoDojo, YeyoHack, LoRA, evaluación |
+| Aprendizaje | PyTorch + Transformers + Unsloth + Axolotl | YeyoDojo, YeyoHack, LoRA, QLoRA, RL, evaluación |
 | Distribución | WebSocket/colas/DB | YeyoNet central-satélite |
 | Paquetes | `.ypkg` + manifests | Nodos instalables y exportables |
 
@@ -120,16 +120,47 @@ El stack de YeyoOS ya no se organiza alrededor de un "OS con IA encima", sino al
 
 ## 5. Entrenamiento y auto-mejora
 
-**Tecnologías:** PyTorch + Hugging Face Transformers.
+**Tecnologías:** PyTorch + Hugging Face Transformers + Unsloth + Axolotl.
 
 **Uso:**
 
 - evaluación offline;
 - adapters / LoRA;
+- QLoRA;
 - datasets curados;
+- pipelines de training reproducibles;
+- entrenamiento eficiente en VRAM limitada;
 - entrenamiento de `YeyoDojo` y `YeyoHack`.
 
 **Estado actual:** documentado, no central en runtime diario.
+
+### Rol de `Unsloth`
+
+Usarlo para:
+
+- iteración rápida;
+- exprimir modelos pequeños;
+- LoRA/QLoRA con menos VRAM;
+- RL eficiente;
+- prototipos de entrenamiento en hardware más modesto.
+
+Es la mejor opción cuando el problema es:
+
+> "el modelo pequeño está muy tonto y necesito mejorarlo sin infraestructura pesada"
+
+### Rol de `Axolotl`
+
+Usarlo para:
+
+- pipelines robustos y reproducibles;
+- YAML configs reutilizables;
+- DPO/RL/reward modelling;
+- multi-GPU y entrenamiento más serio;
+- runs largos del nodo central o de `YeyoNet`.
+
+Es la mejor opción cuando el problema es:
+
+> "ya sabemos qué queremos entrenar y ahora necesitamos hacerlo bien, medirlo y repetirlo"
 
 ## 6. Distribución
 
@@ -173,6 +204,8 @@ herramientas del ecosistema del lenguaje
 ```text
 torch
 transformers
+unsloth
+axolotl
 datasets (cuando aplique)
 evaluación propia / benchmarks
 ```
@@ -196,6 +229,20 @@ Stable Diffusion
 - `qwen2.5:0.5b` o equivalente para tareas ultraligeras
 - `qwen2.5-coder` o equivalente para código
 - modelos mayores solo cuando el hardware o `YeyoNet` lo permitan
+
+### Fine-tuning / mejora de modelos pequeños
+
+- `Unsloth` como primera opción para LoRA/QLoRA rápida
+- `Axolotl` como opción robusta y repetible para runs serios
+
+### Regla práctica para hardware limitado
+
+Con hardware como GTX 1060 3GB, el objetivo no debe ser "entrenar cualquier cosa localmente", sino:
+
+1. usar modelos pequeños;
+2. entrenar adapters concretos;
+3. curar datasets muy buenos;
+4. delegar entrenamientos más grandes a `YeyoNet` cuando exista.
 
 ### Embeddings
 
@@ -244,6 +291,7 @@ Investigación y quality
 
 Aprendizaje
   -> YeyoDojo + YeyoHack
+  -> Unsloth / Axolotl sobre PyTorch + Transformers
 
 Distribución
   -> YeyoNet

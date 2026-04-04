@@ -39,7 +39,7 @@ Creas contenido aún mejor → ...
 
 1. **IA al centro:** Todo pasa por inteligencia artificial. No hay menús complicados ni configuraciones manuales.
 2. **Nodos conectados (fractal):** La interfaz son nodos a todos los niveles. La pantalla principal son nodos. Dentro de cada nodo hay más nodos. Es el mismo patrón repetido.
-3. **Nunca olvidar:** Las 5 capas de memoria garantizan que nada se pierde. Puedes preguntar "¿qué hice hace 3 meses?" y el sistema responde.
+3. **Nunca olvidar:** `Flash Memory` unifica recuerdos, hechos, decisiones, archivos y preferencias. Nada se borra; solo cambia de prioridad.
 4. **Crear sin alucinar:** Sistema multi-agente de verificación. La IA usa herramientas reales en vez de imaginar.
 5. **Intercambiable:** Cada pieza (modelo IA, orquestador, base de datos) se puede reemplazar sin reescribir el sistema.
 6. **Escalar sin límites:** De una PC personal a un datacenter, sin cambiar código.
@@ -64,8 +64,8 @@ Creas contenido aún mejor → ...
 - VS Code embebido con copilots
 - Soporte para cualquier lenguaje de programación
 
-### Mejora Continua del Propio OS
-- Fork de OpenClaw para corregir bugs
+### Mejora Continua del Propio Sistema
+- Evolución del propio `YeyoOrquestador`, `Investigador`, `Flash Memory` y nodos
 - Sistema de auto-diagnóstico
 - La IA sugiere fixes, tú apruebas
 

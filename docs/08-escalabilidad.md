@@ -147,7 +147,7 @@ docker-compose → Kubernetes (o Docker Swarm)
 │                               └── Auto-scale  │
 │                                              │
 │  Cada usuario tiene:                          │
-│  ├── Su propia memoria (5 capas aisladas)    │
+│  ├── Su propio Flash Memory aislado           │
 │  ├── Sus propios nodos y configuraciones     │
 │  ├── Su propio espacio de archivos           │
 │  └── Aislamiento total de otros usuarios     │

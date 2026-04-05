@@ -35,6 +35,7 @@ import {
 import { VideoNodeLayout } from '@/components/nodes/VideoNodeLayout';
 import { CodeNodeLayout } from '@/components/nodes/CodeNodeLayout';
 import { AutomationNodeLayout } from '@/components/nodes/AutomationNodeLayout';
+import { MemoryNodeLayout } from '@/components/nodes/MemoryNodeLayout';
 import ChatPanel from '@/components/chat/ChatPanel';
 
 // ─── Nodos disponibles en el Hub ───────────────────────────────────────────────
@@ -47,7 +48,7 @@ const NODOS_HUB: NodoLibreInfo[] = [
   { id: 'memoria',   label: 'Memoria',    tipo: 'memory',     icono: '🧠',  colorAcento: '#00bcd4' },
 ];
 
-type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | null;
+type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | null;
 
 // ─── Workspace Router ──────────────────────────────────────────────────────────
 function WorkspaceRouter({
@@ -110,6 +111,7 @@ function WorkspaceRouter({
     case 'video':      return wrapper(<VideoNodeLayout clips={videoClips} chatMessages={videoMessages} onClipAdd={onVideoClipAdd} onChatSend={onVideoChatSend} />);
     case 'codigo':     return wrapper(<CodeNodeLayout chatMessages={codeMessages} onChatSend={onCodeChatSend} />);
     case 'automacion': return wrapper(<AutomationNodeLayout />);
+    case 'memoria':    return wrapper(<MemoryNodeLayout />);
     default:           return null;
   }
 }
@@ -131,6 +133,7 @@ function HubPrincipal() {
     video:      { label: 'Video',       icono: '🎬' },
     codigo:     { label: 'Código',      icono: '💻' },
     automacion: { label: 'Automatizar', icono: '⚡' },
+    memoria:    { label: 'Memoria',     icono: '🧠' },
   };
 
   const abrirNodo = useCallback((nodeId: string) => {
@@ -139,12 +142,7 @@ function HubPrincipal() {
       useChatStore.getState().setPanelOpen(true);
       return;
     }
-    // Memoria: abrir panel lateral de chat (por ahora)
-    if (nodeId === 'memoria') {
-      useChatStore.getState().setPanelOpen(true);
-      return;
-    }
-    if (!['imagen', 'video', 'codigo', 'automacion'].includes(nodeId)) return;
+    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria'].includes(nodeId)) return;
     const ws = nodeId as WorkspaceId;
     setActiveWorkspace(ws);
     const info = WORKSPACE_LABELS[nodeId];

@@ -17,12 +17,50 @@ export type NodeType =
   | 'automation'
   | 'files'
   | 'browser'
-  | 'config';
+  | 'config'
+  | 'memory';
 
+// ─── Flash Memory Types ────────────────────────────────────────────────────────
+
+export type MemoryTier = 'HOT' | 'WARM' | 'COLD';
+export type MemoryType = 'conversation' | 'preference' | 'fact' | 'correction' | 'skill';
+
+/** Memoria individual tal como la devuelve el backend */
 export interface Memory {
   id: string;
   content: string;
-  type: 'conversation' | 'preference' | 'fact' | 'correction';
-  tier: 'HOT' | 'WARM' | 'COLD';
-  createdAt: Date;
+  type: MemoryType;
+  tier: MemoryTier;
+  checksum: string;
+  access_count: number;
+  metadata: Record<string, unknown>;
+  source: string;
+  namespace?: string;
+  created_at: string | null;
+  accessed_at: string | null;
+}
+
+/** Respuesta de /api/v1/memory/search */
+export interface MemorySearchResponse {
+  results: Memory[];
+  total: number;
+  query: string;
+}
+
+/** Respuesta de /api/v1/memory/stats */
+export interface MemoryStats {
+  total_memories: number;
+  by_tier: Record<MemoryTier, number>;
+  by_type: Record<MemoryType, number>;
+  total_associations: number;
+}
+
+/** Asociación entre dos memorias */
+export interface MemoryAssociation {
+  id: string;
+  content: string;
+  type: MemoryType;
+  tier: MemoryTier;
+  relation_type: string | null;
+  strength: number | null;
 }

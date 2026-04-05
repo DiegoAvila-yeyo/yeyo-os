@@ -8,6 +8,9 @@ const config = {
     '^pixi\\.js$': '<rootDir>/__mocks__/pixi.js.ts',
     '^@/(.*)$': '<rootDir>/src/$1',
     '\\.css$': '<rootDir>/__mocks__/styleMock.ts',
+    '^react-markdown$': '<rootDir>/__mocks__/react-markdown.tsx',
+    '^remark-gfm$': '<rootDir>/__mocks__/remark-gfm.ts',
+    '^wavesurfer\\.js$': '<rootDir>/__mocks__/wavesurfer-js.ts',
   },
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: { jsx: 'react-jsx' } }],

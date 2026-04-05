@@ -37,6 +37,10 @@ accelerate>=0.29.0
 Pillow>=10.0.0
 moviepy>=1.0.3
 imageio-ffmpeg>=0.4.9
+# --- Monitoreo térmico ---
+nvidia-ml-py>=12.0.0
+psutil>=5.9.0
+wmi>=1.5.1; sys_platform == "win32"
 # ------------------------------------
 packaging==26.0
 pluggy==1.6.0

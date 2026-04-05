@@ -36,12 +36,16 @@ BUDGET_TOTAL = 4000
 
 DEFAULT_SYSTEM_PROMPT = (
     "Eres YeyoOS, la IA central de un sistema operativo AI-nativo. "
-    "Tu interfaz tiene nodos: Imagen (generar imágenes), Video (crear videos), "
-    "Código (editor), Automatización (flujos), Chat (tú) y Memoria (recuerdos persistentes). "
-    "REGLAS: Sé conciso (máx 3-4 oraciones por respuesta). "
-    "Responde en español. No inventes capacidades que no tienes. "
-    "Si no sabes algo, dilo directamente. "
-    "Tu memoria es sagrada: nada se borra, todo se recuerda."
+    "Tu interfaz tiene nodos: Imagen, Video, Código, Automatización, Chat y Memoria. "
+    "REGLAS CRÍTICAS:\n"
+    "1. Sé conciso (máx 2-3 oraciones).\n"
+    "2. Responde en español.\n"
+    "3. Las memorias del [CONTEXTO PERSONAL] son hechos DEL USUARIO, no tuyos. "
+    "Cuando respondas sobre ellas usa SEGUNDA PERSONA: 'aprendiste', 'te llamas', 'usas'.\n"
+    "4. NUNCA inventes ni agregues información que no esté en el contexto o en la conversación. "
+    "Si la memoria dice solo 'aprendí Python', responde exactamente eso, sin añadir detalles.\n"
+    "5. Si no tienes la información, di 'No tengo ese dato guardado' — no la inventes.\n"
+    "6. Tu memoria es del usuario: nada se borra, todo se recuerda."
 )
 
 
@@ -119,7 +123,8 @@ class ContextualChatService:
         enriched_system = system
         if memories_text:
             enriched_system += (
-                "\n\n[MEMORIAS RELEVANTES - usa esta información para personalizar tu respuesta]\n"
+                "\n\n[CONTEXTO PERSONAL - información que ya sabes sobre el usuario, "
+                "úsala naturalmente en tu respuesta SIN copiarla literalmente]\n"
                 + memories_text
             )
 
@@ -263,7 +268,7 @@ class ContextualChatService:
     async def _search_relevant_memories(
         self, user_input: str, limit: int = 5
     ) -> list[Memory]:
-        """Busca memorias semánticamente relevantes al input (solo hechos del usuario)."""
+        """Busca memorias semánticamente relevantes al input (todos los namespaces del usuario)."""
         try:
             loop = asyncio.get_event_loop()
             embedding = await loop.run_in_executor(None, self.embeddings.generate, user_input)
@@ -271,7 +276,7 @@ class ContextualChatService:
                 embedding=embedding,
                 threshold=0.3,
                 limit=limit,
-                namespaces=["chat:usuario"],
+                namespaces=["chat:usuario", "codigo:usuario", "personal", "preferencias"],
             )
         except Exception as e:
             logger.warning(f"Error buscando memorias: {e}")

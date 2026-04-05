@@ -19,6 +19,17 @@ from .interfaces import IAProvider, IAMessage, IAResponse
 class OllamaProvider(IAProvider):
     """Adaptador concreto para Ollama local."""
 
+    # Opciones seguras para GTX 1060 3GB + 16GB RAM
+    # num_ctx=4096  → KV cache ~512MB en VRAM (vs ~2GB con 32768)
+    # num_gpu=-1    → todas las capas posibles en VRAM
+    # num_predict=1024 → respuestas completas sin cortar
+    SAFE_OPTIONS = {
+        "num_ctx": 4096,
+        "num_gpu": -1,
+        "num_predict": 1024,
+        "num_thread": 6,
+    }
+
     def __init__(
         self,
         host: str | None = None,
@@ -46,7 +57,7 @@ class OllamaProvider(IAProvider):
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {"temperature": temperature, "num_predict": 512},
+            "options": {**self.SAFE_OPTIONS, "temperature": temperature},
         }
         if system:
             payload["system"] = system
@@ -85,7 +96,7 @@ class OllamaProvider(IAProvider):
                 "model": self.model,
                 "messages": formatted_messages,
                 "stream": False,
-                "options": {"temperature": temperature, "num_predict": 512},
+                "options": {**self.SAFE_OPTIONS, "temperature": temperature},
             },
         )
         response.raise_for_status()
@@ -118,7 +129,7 @@ class OllamaProvider(IAProvider):
                 "model": self.model,
                 "messages": formatted_messages,
                 "stream": True,
-                "options": {"temperature": temperature, "num_predict": 512},
+                "options": {**self.SAFE_OPTIONS, "temperature": temperature},
             },
         ) as response:
             response.raise_for_status()

@@ -158,11 +158,6 @@ describe('VideoNodeLayout', () => {
     expect(screen.getByTestId('video-node-layout')).toBeInTheDocument()
   })
 
-  it('chat siempre visible', () => {
-    render(<VideoNodeLayout />)
-    expect(screen.getByTestId('chat-panel')).toBeInTheDocument()
-  })
-
   it('timeline visible', () => {
     render(<VideoNodeLayout />)
     expect(screen.getByTestId('timeline')).toBeInTheDocument()
@@ -171,6 +166,11 @@ describe('VideoNodeLayout', () => {
   it('assets panel visible', () => {
     render(<VideoNodeLayout />)
     expect(screen.getByTestId('assets-panel')).toBeInTheDocument()
+  })
+
+  it('muestra mensaje cuando no hay clips', () => {
+    render(<VideoNodeLayout />)
+    expect(screen.getByText(/arrastra un video/i)).toBeInTheDocument()
   })
 })
 

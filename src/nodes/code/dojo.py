@@ -25,6 +25,41 @@ from src.ia.interfaces import IAProvider, IAMessage
 
 logger = logging.getLogger("yeyoos.code_dojo")
 
+
+def _strip_markdown(text: str) -> str:
+    """Elimina bloques de markdown y normaliza formato que modelos pequeños omiten."""
+    import re
+
+    # 1. Eliminar fences de markdown
+    text = re.sub(r"```[a-zA-Z]*\n?", "", text)
+    text = re.sub(r"```", "", text)
+
+    # 2. Modelos 3B omiten saltos de línea antes de palabras clave de bloque
+    #    Ej: "import pytestdef foo():" → "import pytest\ndef foo():"
+    block_keywords = r"(def |class |import |from |@[a-zA-Z])"
+    text = re.sub(rf"(\S)({block_keywords})", r"\1\n\2", text)
+
+    # 3. Después de los dos puntos de un bloque, la siguiente sentencia va en nueva línea
+    #    Ej: "def foo():    assert x" → "def foo():\n    assert x"
+    text = re.sub(r"(:)\s{2,}(\S)", r":\n    \2", text)
+
+    # 4. Separar sentencias pegadas dentro del cuerpo (4+ espacios entre sentencias)
+    #    Ej: "    assert a == 1    assert b == 2" → "    assert a == 1\n    assert b == 2"
+    stmt_start = r"(assert |return |raise |if |for |while |with |yield |pass|break|continue)"
+    text = re.sub(rf"\s{{4,}}({stmt_start})", r"\n    \1", text)
+
+    return text.strip()
+
+
+def _format_python(code: str) -> str:
+    """Intenta formatear código Python con black. Si falla, retorna el original."""
+    try:
+        import black
+        return black.format_str(code, mode=black.Mode())
+    except Exception:
+        return code
+
+
 # ─── Definición de los 12 agentes ────────────────────────────────────────────
 
 AGENTES: dict[str, dict] = {
@@ -45,7 +80,9 @@ AGENTES: dict[str, dict] = {
             "Escribes código limpio, eficiente y bien documentado. "
             "Manejas APIs REST/GraphQL, bases de datos, autenticación. "
             "Siempre incluyes manejo de errores, logging y type hints. "
-            "Responde SOLO con el código, sin explicaciones largas."
+            "IMPORTANTE: usa exactamente 4 espacios por nivel de indentación. "
+            "IMPORTANTE: nunca pongas múltiples sentencias en la misma línea. "
+            "Responde SOLO con el bloque de código Python, sin texto adicional."
         ),
         "especialidad": "lógica de servidor",
         "output": "código funcional",
@@ -115,7 +152,9 @@ AGENTES: dict[str, dict] = {
             "Eres un ingeniero de QA senior. "
             "Escribes tests unitarios, integración y e2e. "
             "Manejas TDD, BDD, mocking y cobertura de código. "
-            "Responde SOLO con el código de tests (pytest para Python, Jest para JS)."
+            "IMPORTANTE: usa exactamente 4 espacios por nivel de indentación. "
+            "IMPORTANTE: cada sentencia en su propia línea, nunca juntas. "
+            "Responde SOLO con el bloque de código de tests (pytest para Python, Jest para JS)."
         ),
         "especialidad": "testing",
         "output": "suite de tests",
@@ -217,7 +256,7 @@ class AgenteBase:
         ]
         try:
             resp = await self._ia.chat(messages, temperature=0.3)
-            return resp.content.strip()
+            return _strip_markdown(resp.content)
         except Exception as e:
             logger.warning(f"[{self._id}] Error: {e}")
             return ""
@@ -410,6 +449,9 @@ class CodeDojo:
                 resultado.razon_falla = "Backend no generó código"
                 continue
 
+            if lenguaje == "python":
+                codigo = _format_python(codigo)
+
             # Crítico evalúa
             logger.info(f"[dojo] Paso 3: Crítico evaluando (intento {intento + 1})...")
             score_critico, razon_critico, pasa = await self._critico.evaluar(codigo, pedido)
@@ -473,6 +515,7 @@ class CodeDojo:
 
         # Ejecutar tests solo para Python por ahora
         if lenguaje == "python":
+            tests = _format_python(tests)  # black normaliza indentación y saltos de línea
             exito, output = self._sandbox.ejecutar_python(tests, codigo)
             logger.info(f"[dojo] Tests: {'✅ pasaron' if exito else '❌ fallaron'}")
             return tests, exito

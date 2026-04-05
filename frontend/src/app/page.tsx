@@ -57,6 +57,12 @@ function WorkspaceRouter({
   imageGallery,
   onImageChatSend,
   onImageAssistantMessage,
+  codeMessages,
+  onCodeChatSend,
+  videoClips,
+  videoMessages,
+  onVideoClipAdd,
+  onVideoChatSend,
 }: {
   nodeId: WorkspaceId;
   onClose: () => void;
@@ -64,7 +70,13 @@ function WorkspaceRouter({
   imageGallery: ImageGenerada[];
   onImageChatSend: (mensaje: string) => void;
   onImageAssistantMessage: (mensaje: string) => void;
-}) {
+  codeMessages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>;
+  onCodeChatSend: (mensaje: string) => void;
+  videoClips: import('@/components/nodes/VideoNodeLayout').ClipInfo[];
+  videoMessages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>;
+  onVideoClipAdd: (clip: import('@/components/nodes/VideoNodeLayout').ClipInfo) => void;
+  onVideoChatSend: (mensaje: string) => void;
+}){
   if (!nodeId) return null;
 
   const closeButton = (
@@ -95,8 +107,8 @@ function WorkspaceRouter({
           onAssistantMessage={onImageAssistantMessage}
         />
       );
-    case 'video':      return wrapper(<VideoNodeLayout />);
-    case 'codigo':     return wrapper(<CodeNodeLayout />);
+    case 'video':      return wrapper(<VideoNodeLayout clips={videoClips} chatMessages={videoMessages} onClipAdd={onVideoClipAdd} onChatSend={onVideoChatSend} />);
+    case 'codigo':     return wrapper(<CodeNodeLayout chatMessages={codeMessages} onChatSend={onCodeChatSend} />);
     case 'automacion': return wrapper(<AutomationNodeLayout />);
     default:           return null;
   }
@@ -110,6 +122,9 @@ function HubPrincipal() {
   const [tabs, setTabs] = useState<TabInfo[]>([]);
   const [imageMessages, setImageMessages] = useState<ImageChatMessage[]>([]);
   const [imageGallery, setImageGallery] = useState<ImageGenerada[]>([]);
+  const [codeMessages, setCodeMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([]);
+  const [videoClips, setVideoClips] = useState<import('@/components/nodes/VideoNodeLayout').ClipInfo[]>([]);
+  const [videoMessages, setVideoMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([]);
 
   const WORKSPACE_LABELS: Record<string, { label: string; icono: string }> = {
     imagen:     { label: 'Imagen',      icono: '🖼️' },
@@ -186,6 +201,55 @@ function HubPrincipal() {
     appendImageMessage('assistant', mensaje);
   }, [appendImageMessage]);
 
+  const handleCodeChatSend = useCallback(async (mensaje: string) => {
+    const userMsg = { id: `code-${Date.now()}`, role: 'user' as const, content: mensaje };
+    const loadingId = `code-loading-${Date.now()}`;
+    const loadingMsg = { id: loadingId, role: 'assistant' as const, content: '⏳ Generando código...' };
+    setCodeMessages(prev => [...prev, userMsg, loadingMsg]);
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/code/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: mensaje, language: 'python' }),
+      });
+      const data = await res.json();
+      const respuesta = data?.codigo || data?.detail || 'Sin respuesta del servidor';
+      const resumen = data?.resumen ? `\n\n_${data.resumen}_` : '';
+      setCodeMessages(prev => prev.map(m =>
+        m.id === loadingId
+          ? { ...m, content: `\`\`\`python\n${respuesta}\n\`\`\`${resumen}` }
+          : m
+      ));
+    } catch (err) {
+      setCodeMessages(prev => prev.map(m =>
+        m.id === loadingId ? { ...m, content: `❌ Error: ${err}` } : m
+      ));
+    }
+  }, []);
+
+  const handleVideoChatSend = useCallback(async (mensaje: string) => {
+    const userMsg = { id: `video-${Date.now()}`, role: 'user' as const, content: mensaje };
+    const loadingId = `video-loading-${Date.now()}`;
+    const loadingMsg = { id: loadingId, role: 'assistant' as const, content: '⏳ Procesando...' };
+    setVideoMessages(prev => [...prev, userMsg, loadingMsg]);
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/video/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: mensaje }),
+      });
+      const data = await res.json();
+      const respuesta = data?.comando || data?.respuesta || data?.detail || 'Sin respuesta del servidor';
+      setVideoMessages(prev => prev.map(m =>
+        m.id === loadingId ? { ...m, content: respuesta } : m
+      ));
+    } catch (err) {
+      setVideoMessages(prev => prev.map(m =>
+        m.id === loadingId ? { ...m, content: `❌ Error: ${err}` } : m
+      ));
+    }
+  }, []);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: '#0a0a0f', overflow: 'hidden' }}>
       {/* TOPBAR */}
@@ -216,6 +280,12 @@ function HubPrincipal() {
               imageGallery={imageGallery}
               onImageChatSend={handleImageChatSend}
               onImageAssistantMessage={handleImageAssistantMessage}
+              codeMessages={codeMessages}
+              onCodeChatSend={handleCodeChatSend}
+              videoClips={videoClips}
+              videoMessages={videoMessages}
+              onVideoClipAdd={(clip) => setVideoClips(prev => [...prev, clip])}
+              onVideoChatSend={handleVideoChatSend}
             />
           ) : (
             /* HUB libre — FreeCanvas con pan/zoom */

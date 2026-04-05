@@ -24,15 +24,36 @@ _NOISE_WORDS = {
     "bien", "bueno", "claro", "entendido", "dale", "sale", "va",
 }
 
+_QUESTION_STARTERS = {
+    "qué", "que", "cómo", "como", "cuándo", "cuando", "dónde", "donde",
+    "por", "quién", "quien", "cuál", "cual", "cuánto", "cuanto",
+    "what", "how", "when", "where", "why", "who", "which",
+    "sabes", "puedes", "podrías", "puedo", "hay", "tienes",
+}
+
 
 def _is_noise(message: str) -> bool:
-    """Retorna True si el mensaje es ruido puro (< 3 palabras sin contenido)."""
+    """Retorna True si el mensaje es ruido puro o una pregunta (no contiene hechos)."""
     if not message or not message.strip():
         return True
-    words = [w.strip(".,!?¿¡").lower() for w in message.strip().split()]
+
+    stripped = message.strip()
+
+    # Preguntas no contienen hechos sobre el usuario — no vale la pena guardarlas
+    if stripped.endswith("?"):
+        return True
+
+    words = [w.strip(".,!?¿¡").lower() for w in stripped.split()]
     words = [w for w in words if w]
+
+    # Mensajes cortos de ruido puro
     if len(words) <= 2 and all(w in _NOISE_WORDS for w in words):
         return True
+
+    # Empieza con palabra interrogativa
+    if words and words[0] in _QUESTION_STARTERS:
+        return True
+
     return False
 
 

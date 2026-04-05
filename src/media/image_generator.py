@@ -17,6 +17,8 @@ import threading
 from pathlib import Path
 from dataclasses import dataclass, field
 
+from src.core.thermal_guard import get_thermal_guard, ThermalAbortError
+
 logger = logging.getLogger("yeyoos.media.image")
 
 # Progreso global de la generación actual
@@ -51,7 +53,7 @@ class ImageGenConfig:
     # Alternativas:
     # "stabilityai/stable-diffusion-2-1-base"  (~2.5GB, requiere HF auth)
     # "CompVis/stable-diffusion-v1-4"   (~2GB)
-    steps: int = 20
+    steps: int = 10
     guidance_scale: float = 7.5
     width: int = 512
     height: int = 512
@@ -83,7 +85,9 @@ class ImageGeneratorService:
         self._pipeline_lock = threading.Lock()  # serializes all MPS/pipeline operations
     def _get_device(self) -> str:
         import torch
-        if torch.backends.mps.is_available():
+        if torch.cuda.is_available():
+            return "cuda"
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             return "mps"
         return "cpu"
 
@@ -99,9 +103,13 @@ class ImageGeneratorService:
             self._device = self._get_device()
             logger.info(f"Cargando modelo SD '{self.config.model_id}' en {self._device}...")
 
-            # MPS (Apple Silicon) + float16 produces NaN values during SD inference → black images.
-            # float32 is slower but produces correct results on MPS.
-            dtype = torch.float32
+            # CUDA: float16 es seguro y 2-3x más rápido.
+            # MPS (Apple Silicon): float16 produce NaN → usar float32.
+            # CPU: float32 siempre.
+            if self._device == "cuda":
+                dtype = torch.float16
+            else:
+                dtype = torch.float32
 
             pipe = StableDiffusionPipeline.from_pretrained(
                 self.config.model_id,
@@ -112,8 +120,11 @@ class ImageGeneratorService:
             )
             pipe = pipe.to(self._device)
 
-            # Optimizaciones de memoria para 8GB
-            pipe.enable_attention_slicing()
+            # Optimizaciones de memoria (crítico para GPUs con ≤4GB VRAM como GTX 1060 3GB)
+            pipe.enable_attention_slicing(1)   # slicing máximo → menos VRAM por paso
+            pipe.enable_vae_slicing()          # decodifica VAE en trozos → -500MB VRAM
+            if hasattr(pipe, "enable_vae_tiling"):
+                pipe.enable_vae_tiling()       # tiles en VAE para resoluciones altas
 
             self._pipeline = pipe
             logger.info(f"Modelo cargado en {self._device} ✅")
@@ -157,8 +168,13 @@ class ImageGeneratorService:
             loop = asyncio.get_event_loop()
             _update_progress(0, steps)
 
+            thermal = get_thermal_guard()
+            thermal.reset_abort()
+            thermal.start_background_monitor()
+
             def _sd_callback(pipe, step_index, timestep, callback_kwargs):
                 _update_progress(step_index + 1, steps)
+                thermal.check_and_wait_async_safe(step=step_index + 1, total=steps)
                 return callback_kwargs
 
             def _run_inference():
@@ -174,7 +190,16 @@ class ImageGeneratorService:
                         callback_on_step_end=_sd_callback,
                     ).images[0]
 
-            image: Image.Image = await loop.run_in_executor(None, _run_inference)
+            try:
+                image: Image.Image = await loop.run_in_executor(None, _run_inference)
+            except ThermalAbortError as e:
+                logger.critical(f"🔥 Generación abortada por temperatura crítica: {e}")
+                _reset_progress()
+                thermal.stop_background_monitor()
+                return ImageResult(success=False, error=f"Temperatura crítica: {e}")
+            finally:
+                thermal.stop_background_monitor()
+
             _reset_progress()
 
             # Fix MPS NaN→0 issue: clamp pixel values to valid range

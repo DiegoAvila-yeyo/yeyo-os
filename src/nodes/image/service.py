@@ -247,6 +247,7 @@ class ImageGenerationNode(NodeBase):
             )
             pipeline = pipeline.to("cuda")
             pipeline.enable_attention_slicing()
+            pipeline.enable_vae_slicing()
             return pipeline
         except ImportError:
             raise RuntimeError(
@@ -258,14 +259,23 @@ class ImageGenerationNode(NodeBase):
     ) -> bytes:
         """Ejecuta inferencia de SD y retorna bytes de imagen PNG."""
         import torch
+        from src.core.thermal_guard import get_thermal_guard
+
+        thermal = get_thermal_guard()
+        num_steps = 20
+
+        def _thermal_callback(pipe, step_index, timestep, callback_kwargs):
+            thermal.check_and_wait_async_safe(step=step_index + 1, total=num_steps)
+            return callback_kwargs
 
         with torch.no_grad():
             result = pipeline(
                 prompt=prompt,
                 width=width,
                 height=height,
-                num_inference_steps=20,
+                num_inference_steps=num_steps,
                 guidance_scale=7.5,
+                callback_on_step_end=_thermal_callback,
             )
 
         image = result.images[0]

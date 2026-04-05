@@ -37,6 +37,9 @@ from src.api.routes.chat import router as chat_router
 from src.api.routes.memory import router as memory_router
 from src.api.routes.packages import router as packages_router, init_package_services
 from src.api.routes.media import router as media_router
+from src.api.routes.nodes import router as nodes_router
+from src.api.routes.code import router as code_router, set_ia_provider as set_code_ia, set_code_ia_provider
+from src.api.routes.video import router as video_router, get_ia_provider as video_get_ia, get_flash_memory as video_get_memory
 
 logger = logging.getLogger("yeyoos.api")
 
@@ -114,6 +117,10 @@ async def lifespan(app: FastAPI):
         await _memory_cache.connect()
         cache_ok = await _memory_cache.health_check()
         logger.info(f"  Redis MemoryCache: {'✅' if cache_ok else '❌ (modo degradado)'}")
+        # Conectar cache a FlashMemory — activa la capa HOT
+        if cache_ok and _flash_memory:
+            _flash_memory.set_cache(_memory_cache)
+            logger.info("  FlashMemory → Redis HOT cache: ✅ conectado")
     except Exception as e:
         logger.warning(f"  Redis MemoryCache: ❌ ({e}) — sin cache HOT")
         _memory_cache = None
@@ -155,6 +162,16 @@ async def lifespan(app: FastAPI):
     # Inyectar dependencias en los routers
     _wire_dependencies()
 
+    set_code_ia(_ia_provider)
+    # Crear proveedor especializado para código (qwen2.5-coder:7b)
+    try:
+        _config = get_config()
+        if _config.ollama_code_model and _config.ollama_code_model != _config.ollama_model:
+            code_ia = OllamaProvider(model=_config.ollama_code_model)
+            set_code_ia_provider(code_ia)
+            logger.info(f"🔧 Modelo de código: {_config.ollama_code_model}")
+    except Exception as e:
+        logger.warning(f"No se pudo cargar modelo de código: {e}")
     logger.info("🟢 YeyoOS Backend listo")
 
     yield
@@ -175,7 +192,7 @@ async def lifespan(app: FastAPI):
 def _wire_dependencies():
     """Inyecta los servicios reales en los routers via FastAPI dependency_overrides."""
     from src.api.routes.chat import get_chat_service, get_conversation_manager, get_feedback_service
-    from src.api.routes.memory import get_flash_memory, get_embedding_service, get_association_engine
+    from src.api.routes.memory import get_flash_memory, get_embedding_service, get_association_engine, get_memory_cache
     from src.api.routes.nodes import get_node_memory_service
 
     # Chat dependencies
@@ -206,6 +223,11 @@ def _wire_dependencies():
     app.dependency_overrides[get_embedding_service] = _real_embedding_service
     app.dependency_overrides[get_association_engine] = _real_association_engine
 
+    async def _real_memory_cache():
+        return _memory_cache
+
+    app.dependency_overrides[get_memory_cache] = _real_memory_cache
+
     # Node memory service
     if _flash_memory and _embedding_service:
         from src.memory.node_memory import NodeMemoryService
@@ -215,6 +237,16 @@ def _wire_dependencies():
             return _node_memory
 
         app.dependency_overrides[get_node_memory_service] = _real_node_memory_service
+
+    # Video dependencies
+    async def _real_video_ia():
+        return _ia_provider
+
+    async def _real_video_memory():
+        return _flash_memory
+
+    app.dependency_overrides[video_get_ia] = _real_video_ia
+    app.dependency_overrides[video_get_memory] = _real_video_memory
 
 
 app = FastAPI(
@@ -283,9 +315,22 @@ async def status():
         r = aioredis.from_url("redis://localhost:6379")
         pong = await r.ping()
         services["redis"] = "up" if pong else "down"
-        await r.close()
+        await r.aclose()
     except Exception:
         services["redis"] = "down"
+
+    down_count = sum(1 for v in services.values() if v == "down")
+
+    # GPU
+    try:
+        import subprocess as _sp
+        result = _sp.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=5,
+        )
+        services["gpu"] = "up" if result.returncode == 0 else "down"
+    except Exception:
+        services["gpu"] = "unavailable"
 
     down_count = sum(1 for v in services.values() if v == "down")
     overall = "healthy" if down_count == 0 else ("degraded" if down_count == 1 else "unhealthy")
@@ -305,6 +350,9 @@ app.include_router(chat_router)
 app.include_router(memory_router)
 app.include_router(packages_router)
 app.include_router(media_router)
+app.include_router(nodes_router)
+app.include_router(code_router)
+app.include_router(video_router)
 
 
 # ========== WebSocket ==========

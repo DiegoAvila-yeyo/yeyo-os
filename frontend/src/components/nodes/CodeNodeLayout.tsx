@@ -9,6 +9,8 @@
 
 import React, { useState } from 'react'
 import Editor from '@monaco-editor/react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 export interface FileNode {
   id: string
@@ -167,7 +169,13 @@ export function CodeNodeLayout({
               color: msg.role === 'user' ? '#E0F7FA' : '#90CAF9',
               alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '90%',
             }}>
-              {msg.content}
+              {msg.role === 'user' ? (
+                <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{msg.content}</p>
+              ) : (
+                <div className="prose prose-invert prose-sm max-w-none" style={{ color: '#90CAF9' }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                </div>
+              )}
             </div>
           ))}
         </div>

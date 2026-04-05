@@ -10,11 +10,14 @@ No existe método delete(). No existirá jamás.
 import json
 import uuid
 import logging
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import asyncpg
 
 from .models import Memory
+
+if TYPE_CHECKING:
+    from .cache import MemoryCache
 
 logger = logging.getLogger("yeyoos.memory")
 
@@ -24,10 +27,23 @@ class FlashMemory:
     Implementación concreta de MemoriaProvider con asyncpg.
     Flash Memory es el sistema de memoria persistente de YeyoOS.
     Las memorias NUNCA se eliminan — solo se mueven entre tiers.
+
+    Arquitectura de 3 capas:
+      🔴 HOT  → Redis (<1ms)      — inyectado vía self.cache
+      🟡 WARM → PostgreSQL (10ms) — memorias activas
+      🔵 COLD → PostgreSQL (50ms) — memorias archivadas
     """
 
-    def __init__(self, pool: asyncpg.Pool):
+    # Umbral de accesos para auto-promover a HOT durante recall
+    _HOT_AUTO_PROMOTE_THRESHOLD = 5
+
+    def __init__(self, pool: asyncpg.Pool, cache: Optional["MemoryCache"] = None):
         self.pool = pool
+        self.cache = cache  # capa HOT — opcional, degrada grácilmente sin Redis
+
+    def set_cache(self, cache: "MemoryCache") -> None:
+        """Inyecta el cache Redis después de la construcción."""
+        self.cache = cache
 
     @classmethod
     async def create(cls, database_url: str) -> "FlashMemory":
@@ -102,32 +118,69 @@ class FlashMemory:
 
     async def recall(self, query: str, limit: int = 5) -> list[Memory]:
         """
-        Recupera memorias relevantes por acceso frecuente y reciente.
-        Combina access_count y accessed_at para relevancia.
+        Recupera memorias relevantes. Estrategia 3 capas:
+          1. HOT desde Redis (sub-ms)
+          2. WARM/COLD desde PostgreSQL para completar el límite
         """
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT id, content, type, tier, checksum, access_count,
-                       metadata, source, namespace, created_at, accessed_at, updated_at
-                FROM flash_memories
-                WHERE tier != 'COLD'
-                  AND (metadata->>'invalid') IS NULL
-                ORDER BY access_count DESC, accessed_at DESC
-                LIMIT $1
-                """,
-                limit,
-            )
-            for row in rows:
-                await conn.execute(
-                    """
-                    UPDATE flash_memories
-                    SET accessed_at = NOW(), access_count = access_count + 1
-                    WHERE id = $1
-                    """,
-                    row["id"],
-                )
-        return [self._row_to_memory(row) for row in rows]
+        results: list[Memory] = []
+
+        # 1. Intentar HOT desde Redis
+        if self.cache:
+            hot_ids = await self.cache.get_hot_memories(limit=limit)
+            if hot_ids:
+                cached = await self.cache.get_multiple(hot_ids)
+                results.extend(cached)
+                logger.debug(f"recall: {len(cached)} hits desde Redis HOT")
+
+        # 2. Completar desde PostgreSQL si faltan
+        remaining = limit - len(results)
+        if remaining > 0:
+            exclude_ids = [m.id for m in results]
+            async with self.pool.acquire() as conn:
+                if exclude_ids:
+                    rows = await conn.fetch(
+                        """
+                        SELECT id, content, type, tier, checksum, access_count,
+                               metadata, source, namespace, created_at, accessed_at, updated_at
+                        FROM flash_memories
+                        WHERE tier != 'COLD'
+                          AND (metadata->>'invalid') IS NULL
+                          AND id != ALL($2::uuid[])
+                        ORDER BY access_count DESC, accessed_at DESC
+                        LIMIT $1
+                        """,
+                        remaining,
+                        [uuid.UUID(eid) for eid in exclude_ids],
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """
+                        SELECT id, content, type, tier, checksum, access_count,
+                               metadata, source, namespace, created_at, accessed_at, updated_at
+                        FROM flash_memories
+                        WHERE tier != 'COLD'
+                          AND (metadata->>'invalid') IS NULL
+                        ORDER BY access_count DESC, accessed_at DESC
+                        LIMIT $1
+                        """,
+                        remaining,
+                    )
+                for row in rows:
+                    await conn.execute(
+                        "UPDATE flash_memories SET accessed_at = NOW(), access_count = access_count + 1 WHERE id = $1",
+                        row["id"],
+                    )
+                pg_memories = [self._row_to_memory(row) for row in rows]
+
+                # Auto-promover a HOT si superan el umbral
+                if self.cache:
+                    for mem in pg_memories:
+                        if mem.access_count >= self._HOT_AUTO_PROMOTE_THRESHOLD and mem.tier != "HOT":
+                            await self.cache.set(mem)
+
+                results.extend(pg_memories)
+
+        return results[:limit]
 
     async def recall_by_type(self, type: str, limit: int = 10) -> list[Memory]:
         """Recupera memorias filtradas por tipo."""
@@ -147,8 +200,17 @@ class FlashMemory:
         return [self._row_to_memory(row) for row in rows]
 
     async def get_by_id(self, memory_id: str) -> Optional[Memory]:
-        """Obtiene una memoria por su ID. Actualiza accessed_at."""
+        """Obtiene una memoria por su ID. Chequea Redis HOT primero, luego PostgreSQL."""
         mid = memory_id if isinstance(memory_id, uuid.UUID) else uuid.UUID(memory_id)
+
+        # 1. Intentar desde cache HOT (Redis)
+        if self.cache:
+            cached = await self.cache.get(str(mid))
+            if cached:
+                logger.debug(f"Cache HIT get_by_id: {mid}")
+                return cached
+
+        # 2. Fallback a PostgreSQL
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -162,7 +224,13 @@ class FlashMemory:
             )
         if row is None:
             return None
-        return self._row_to_memory(row)
+        memory = self._row_to_memory(row)
+
+        # 3. Si es HOT, cachear en Redis para la próxima consulta
+        if memory.tier == "HOT" and self.cache:
+            await self.cache.set(memory)
+
+        return memory
 
     async def search_semantic(
         self,
@@ -289,7 +357,12 @@ class FlashMemory:
             )
 
         logger.info(f"Memoria {memory_id} promovida: {current['tier']}→{new_tier}")
-        return self._row_to_memory(row)
+        memory = self._row_to_memory(row)
+
+        # Sincronizar con Redis: HOT entra al cache
+        if new_tier == "HOT" and self.cache:
+            await self.cache.set(memory)
+        return memory
 
     async def demote_tier(self, memory_id: str) -> Memory:
         """
@@ -329,7 +402,12 @@ class FlashMemory:
             )
 
         logger.info(f"Memoria {memory_id} degradada: {current['tier']}→{new_tier}")
-        return self._row_to_memory(row)
+        memory = self._row_to_memory(row)
+
+        # Sincronizar con Redis: si salió de HOT, invalidar cache
+        if current["tier"] == "HOT" and self.cache:
+            await self.cache.invalidate(str(mid))
+        return memory
 
     async def get_stats(self) -> dict:
         """Estadísticas del sistema de memoria."""

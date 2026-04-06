@@ -39,7 +39,7 @@ interface AuditEvent {
   memory_namespace: string;
 }
 
-type ViewMode = 'engine' | 'gauges' | 'console';
+type ViewMode = 'engine' | 'gauges' | 'console' | 'pipeline';
 
 // ─── Palette ───────────────────────────────────────────────────────────────────
 const C = {
@@ -594,6 +594,318 @@ function ConsoleView({ events }: { events: AuditEvent[] }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PIPELINE VIEW — Visual flow of AI extraction
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface PipelineStep {
+  pipeline_id: string;
+  step: string;
+  status: string;
+  detail: string;
+  metadata: Record<string, unknown>;
+  timestamp: string;
+}
+
+interface Pipeline {
+  pipeline_id: string;
+  status: string;
+  steps: PipelineStep[];
+  steps_completed: string[];
+  started_at: string | null;
+  message_preview: string;
+}
+
+interface StepStats {
+  [step: string]: { total: number; ok: number; error: number; skip: number };
+}
+
+const STEP_DEFS = [
+  { key: 'RECEIVED',           icon: '📨', label: 'RECIBIDO',   color: '#4fc3f7' },
+  { key: 'NOISE_CHECK',        icon: '🧹', label: 'FILTRO',     color: '#ffb900' },
+  { key: 'TYPE_CLASSIFY',      icon: '🏷️', label: 'TIPO',       color: '#9c27b0' },
+  { key: 'EMBEDDING',          icon: '🧬', label: 'EMBEDDING',  color: '#2196f3' },
+  { key: 'STORED',             icon: '💾', label: 'GUARDADO',   color: '#4caf50' },
+  { key: 'NAMESPACE_CLASSIFY', icon: '📂', label: 'NAMESPACE',  color: '#00bcd4' },
+];
+
+const STATUS_COLOR: Record<string, string> = {
+  ok: '#4caf50',
+  error: '#ff5050',
+  skip: '#ffb900',
+};
+
+function PipelineView() {
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [stepStats, setStepStats] = useState<StepStats>({});
+  const [loading, setLoading] = useState(true);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchPipeline = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/map/pipeline?limit=15`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setPipelines(data.pipelines ?? []);
+      setStepStats(data.step_stats ?? {});
+    } catch {
+      // silent
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPipeline();
+    intervalRef.current = setInterval(fetchPipeline, 3000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [fetchPipeline]);
+
+  // Calculate error rate per step
+  const getErrorRate = (step: string) => {
+    const s = stepStats[step];
+    if (!s || s.total === 0) return 0;
+    return s.error / s.total;
+  };
+
+  const formatTime = (ts: string | null) => {
+    if (!ts) return '';
+    return new Date(ts).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
+  return (
+    <div style={{ padding: 20, overflowY: 'auto', height: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+      {/* ─── Pipeline Steps Diagram ─────────────────────────────────────────── */}
+      <div>
+        <div style={{ fontSize: 10, color: '#4fc3f7', fontFamily: 'monospace', letterSpacing: 2, marginBottom: 16 }}>
+          EXTRACTION PIPELINE — PASO A PASO
+        </div>
+
+        {/* Step nodes connected by lines */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, padding: '10px 0' }}>
+          {STEP_DEFS.map((step, i) => {
+            const stats = stepStats[step.key];
+            const total = stats?.total ?? 0;
+            const errors = stats?.error ?? 0;
+            const errorRate = getErrorRate(step.key);
+            const hasErrors = errors > 0;
+
+            return (
+              <React.Fragment key={step.key}>
+                {/* Node */}
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                  position: 'relative',
+                }}>
+                  {/* Circle */}
+                  <div style={{
+                    width: 56, height: 56, borderRadius: '50%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: hasErrors
+                      ? `radial-gradient(circle, rgba(255,80,80,0.2), rgba(255,80,80,0.05))`
+                      : `radial-gradient(circle, ${step.color}22, ${step.color}08)`,
+                    border: `2px solid ${hasErrors ? '#ff5050' : step.color}`,
+                    boxShadow: hasErrors
+                      ? '0 0 15px rgba(255,80,80,0.4)'
+                      : `0 0 10px ${step.color}33`,
+                    animation: hasErrors ? 'pulse 1.5s infinite' : 'none',
+                    transition: 'all 300ms',
+                  }}>
+                    <span style={{ fontSize: 22 }}>{step.icon}</span>
+                  </div>
+
+                  {/* Label */}
+                  <span style={{ fontSize: 9, color: step.color, fontFamily: 'monospace', letterSpacing: 1 }}>
+                    {step.label}
+                  </span>
+
+                  {/* Stats below */}
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <span style={{ fontSize: 10, color: '#4caf50', fontFamily: 'monospace' }}>
+                      {total > 0 ? `${total - errors}✓` : '—'}
+                    </span>
+                    {errors > 0 && (
+                      <span style={{ fontSize: 10, color: '#ff5050', fontFamily: 'monospace', fontWeight: 700 }}>
+                        {errors}✗
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Error rate bar */}
+                  {total > 0 && (
+                    <div style={{ width: 40, height: 3, background: '#1a1a2e', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${(1 - errorRate) * 100}%`, height: '100%',
+                        background: errorRate > 0.1 ? '#ff5050' : '#4caf50',
+                        borderRadius: 2, transition: 'width 500ms',
+                      }} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Connector line */}
+                {i < STEP_DEFS.length - 1 && (
+                  <div style={{
+                    width: 40, height: 2, position: 'relative',
+                    background: `linear-gradient(90deg, ${step.color}66, ${STEP_DEFS[i + 1].color}66)`,
+                    marginBottom: 30,
+                    overflow: 'hidden',
+                  }}>
+                    {/* Animated particle */}
+                    <div style={{
+                      position: 'absolute', top: -2, width: 6, height: 6,
+                      borderRadius: '50%', background: step.color,
+                      boxShadow: `0 0 6px ${step.color}`,
+                      animation: 'dataFlow 2s infinite linear',
+                    }} />
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─── Live Pipeline Stream ───────────────────────────────────────────── */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <span style={{ fontSize: 10, color: '#4fc3f7', fontFamily: 'monospace', letterSpacing: 2 }}>
+            FLUJOS RECIENTES
+          </span>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%', background: '#4caf50',
+            animation: 'pulse 2s infinite',
+          }} />
+          <span style={{ fontSize: 9, color: '#334', fontFamily: 'monospace' }}>
+            polling 3s
+          </span>
+        </div>
+
+        {loading ? (
+          <div style={{ color: '#556', fontSize: 12, fontFamily: 'monospace', textAlign: 'center', padding: 30 }}>
+            Esperando actividad del pipeline…
+          </div>
+        ) : pipelines.length === 0 ? (
+          <div style={{ color: '#334', fontSize: 12, fontFamily: 'monospace', textAlign: 'center', padding: 30 }}>
+            Envía un mensaje en el chat para ver el flujo aquí
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {pipelines.map(pipe => {
+              const isError = pipe.status === 'error';
+              return (
+                <div
+                  key={pipe.pipeline_id}
+                  style={{
+                    background: isError ? 'rgba(255,80,80,0.06)' : 'rgba(79,195,247,0.03)',
+                    border: `1px solid ${isError ? '#ff505033' : '#1E3A5F'}`,
+                    borderRadius: 10, padding: '12px 16px',
+                    animation: 'fadeInLine 0.4s ease-out',
+                  }}
+                >
+                  {/* Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span style={{
+                      fontSize: 10, fontFamily: 'monospace', padding: '2px 6px',
+                      borderRadius: 4,
+                      background: isError ? 'rgba(255,80,80,0.15)' : 'rgba(76,175,80,0.15)',
+                      color: isError ? '#ff5050' : '#4caf50',
+                      border: `1px solid ${isError ? '#ff505044' : '#4caf5044'}`,
+                    }}>
+                      {isError ? '❌ ERROR' : '✅ OK'}
+                    </span>
+                    <span style={{ fontSize: 10, color: '#556', fontFamily: 'monospace' }}>
+                      {pipe.pipeline_id}
+                    </span>
+                    <span style={{ fontSize: 10, color: '#445', fontFamily: 'monospace', marginLeft: 'auto' }}>
+                      {formatTime(pipe.started_at)}
+                    </span>
+                  </div>
+
+                  {/* Message preview */}
+                  {pipe.message_preview && (
+                    <div style={{
+                      fontSize: 11, color: '#90caf9', marginBottom: 10, padding: '6px 10px',
+                      background: '#0a0a0f', borderRadius: 6, border: '1px solid #1a1a2e',
+                      overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                    }}>
+                      &quot;{pipe.message_preview}&quot;
+                    </div>
+                  )}
+
+                  {/* Step flow visualization */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                    {STEP_DEFS.map((stepDef, i) => {
+                      const stepEvent = pipe.steps.find(s => s.step === stepDef.key);
+                      const completed = pipe.steps_completed.includes(stepDef.key);
+                      const status = stepEvent?.status ?? 'pending';
+
+                      return (
+                        <React.Fragment key={stepDef.key}>
+                          {/* Mini node */}
+                          <div
+                            title={stepEvent?.detail || stepDef.label}
+                            style={{
+                              width: 28, height: 28, borderRadius: '50%',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 13,
+                              background: !completed ? '#0d0d1a'
+                                : status === 'ok' ? `${STATUS_COLOR.ok}18`
+                                : status === 'error' ? `${STATUS_COLOR.error}22`
+                                : `${STATUS_COLOR.skip}18`,
+                              border: `2px solid ${!completed ? '#1a1a2e'
+                                : STATUS_COLOR[status] || '#556'}`,
+                              boxShadow: status === 'error' && completed ? '0 0 8px rgba(255,80,80,0.5)' : 'none',
+                              transition: 'all 300ms',
+                            }}
+                          >
+                            {!completed ? (
+                              <span style={{ fontSize: 8, color: '#334' }}>•</span>
+                            ) : status === 'error' ? (
+                              <span style={{ fontSize: 11 }}>❌</span>
+                            ) : status === 'skip' ? (
+                              <span style={{ fontSize: 11 }}>⏭️</span>
+                            ) : (
+                              <span style={{ fontSize: 11 }}>{stepDef.icon}</span>
+                            )}
+                          </div>
+
+                          {/* Connector */}
+                          {i < STEP_DEFS.length - 1 && (
+                            <div style={{
+                              flex: 1, height: 2, minWidth: 8,
+                              background: completed && pipe.steps_completed.includes(STEP_DEFS[i + 1]?.key)
+                                ? (status === 'error' ? '#ff505066' : '#4caf5066')
+                                : '#1a1a2e',
+                              transition: 'background 300ms',
+                            }} />
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+
+                  {/* Step details on error */}
+                  {isError && pipe.steps.filter(s => s.status === 'error').map(s => (
+                    <div key={s.step} style={{
+                      marginTop: 8, padding: '6px 10px', borderRadius: 6,
+                      background: 'rgba(255,80,80,0.08)', border: '1px solid #ff505022',
+                      fontSize: 10, color: '#ff8a80', fontFamily: 'monospace',
+                    }}>
+                      ⚠ {s.step}: {s.detail}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN EXPORT
 // ═══════════════════════════════════════════════════════════════════════════════
 export function MemoryMapLayout() {
@@ -655,6 +967,7 @@ export function MemoryMapLayout() {
     { key: 'engine', icon: '⚛️', label: 'ENGINE' },
     { key: 'gauges', icon: '📊', label: 'GAUGES' },
     { key: 'console', icon: '🖥️', label: 'CONSOLE' },
+    { key: 'pipeline', icon: '🔬', label: 'PIPELINE' },
   ];
 
   return (
@@ -753,6 +1066,8 @@ export function MemoryMapLayout() {
           <EngineView cells={cells} namespaces={namespaces} />
         ) : view === 'gauges' ? (
           <GaugesView cells={cells} namespaces={namespaces} />
+        ) : view === 'pipeline' ? (
+          <PipelineView />
         ) : (
           <ConsoleView events={events} />
         )}

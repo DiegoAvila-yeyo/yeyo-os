@@ -738,3 +738,20 @@ async def memory_map_distribution(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/map/pipeline")
+async def memory_pipeline_events(
+    limit: int = Query(20, ge=1, le=50),
+):
+    """
+    🔬 Pipeline de extracción en tiempo real.
+    Retorna los últimos pipelines con sus pasos y estadísticas.
+    """
+    from src.memory.pipeline_events import pipeline_buffer
+
+    return {
+        "pipelines": pipeline_buffer.get_pipelines(limit),
+        "step_stats": pipeline_buffer.get_step_stats(),
+        "recent_events": pipeline_buffer.get_recent(limit * 6),
+    }

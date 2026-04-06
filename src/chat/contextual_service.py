@@ -156,6 +156,7 @@ class ContextualChatService:
 
     async def _extract_and_store(self, user_input: str, assistant_response: str) -> None:
         """Guarda el mensaje del usuario directamente en Flash Memory."""
+        from src.memory.pipeline_events import pipeline_buffer
         try:
             stored = await self._extractor.extract_and_store(
                 user_message=user_input,
@@ -186,6 +187,15 @@ class ContextualChatService:
 
     async def _classify_and_update_namespace(self, memory_id: str, content: str) -> None:
         """Clasifica el contenido y actualiza el namespace en BD. Corre en background."""
+        from src.memory.pipeline_events import pipeline_buffer
+        # Find the pipeline_id for this content
+        recent = pipeline_buffer.get_recent(50)
+        pid = None
+        for ev in reversed(recent):
+            if ev["step"] == "RECEIVED" and content[:80] in ev.get("detail", ""):
+                pid = ev["pipeline_id"]
+                break
+
         try:
             namespace = await self._classifier.classify(content)
             if namespace != "chat:usuario":  # solo actualizar si cambió del default
@@ -196,8 +206,17 @@ class ContextualChatService:
                         memory_id,
                     )
                 logger.debug(f"Namespace actualizado: {memory_id[:8]}... → {namespace}")
+
+            if pid:
+                pipeline_buffer.emit(pid, "NAMESPACE_CLASSIFY", "ok",
+                                     f"→ {namespace}",
+                                     {"namespace": namespace, "memory_id": memory_id})
         except Exception as e:
             logger.warning(f"Error clasificando namespace (no crítico): {e}")
+            if pid:
+                pipeline_buffer.emit(pid, "NAMESPACE_CLASSIFY", "error",
+                                     f"Falló: {str(e)[:100]}",
+                                     {"error": str(e)[:200]})
 
     async def send_message(
         self,

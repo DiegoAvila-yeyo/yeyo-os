@@ -13,6 +13,7 @@ import logging
 import re
 
 from src.memory.flash_memory import FlashMemory
+from src.memory.pipeline_events import pipeline_buffer
 
 logger = logging.getLogger("yeyoos.extraction")
 
@@ -146,11 +147,23 @@ class MemoryExtractor:
         """
         Guarda el mensaje del usuario directamente sin filtros.
         Retorna True si se guardó, False si era ruido puro.
+        Emite eventos al pipeline_buffer para visualización en MemoryMap.
         """
+        pid = pipeline_buffer.new_pipeline()
+        pipeline_buffer.emit(pid, "RECEIVED", "ok", user_message[:80],
+                             {"content": user_message[:200]})
+
         if _is_noise(user_message):
+            pipeline_buffer.emit(pid, "NOISE_CHECK", "skip",
+                                 "Filtrado como ruido",
+                                 {"reason": "noise"})
             return False
 
+        pipeline_buffer.emit(pid, "NOISE_CHECK", "ok", "Mensaje significativo")
+
         memory_type = classify_memory_type(user_message, assistant_message)
+        pipeline_buffer.emit(pid, "TYPE_CLASSIFY", "ok", f"Tipo: {memory_type}",
+                             {"type": memory_type})
 
         embedding = None
         if embedding_service:
@@ -160,17 +173,35 @@ class MemoryExtractor:
                 embedding = await loop.run_in_executor(
                     None, embedding_service.generate, user_message
                 )
-            except Exception:
-                pass
+                pipeline_buffer.emit(pid, "EMBEDDING", "ok",
+                                     f"Vector generado ({len(embedding)} dims)",
+                                     {"dims": len(embedding) if embedding else 0})
+            except Exception as e:
+                pipeline_buffer.emit(pid, "EMBEDDING", "error",
+                                     f"Falló: {str(e)[:100]}",
+                                     {"error": str(e)[:200]})
+        else:
+            pipeline_buffer.emit(pid, "EMBEDDING", "skip",
+                                 "Sin servicio de embedding")
 
-        await flash_memory.store(
-            content=user_message,
-            type=memory_type,
-            metadata={"original_text": user_message, "classified_type": memory_type},
-            embedding=embedding,
-            source="chat_extraction",
-            namespace=namespace,
-        )
+        try:
+            await flash_memory.store(
+                content=user_message,
+                type=memory_type,
+                metadata={"original_text": user_message, "classified_type": memory_type},
+                embedding=embedding,
+                source="chat_extraction",
+                namespace=namespace,
+            )
+            pipeline_buffer.emit(pid, "STORED", "ok",
+                                 f"Guardado en {namespace}",
+                                 {"namespace": namespace, "type": memory_type})
+        except Exception as e:
+            pipeline_buffer.emit(pid, "STORED", "error",
+                                 f"Error al guardar: {str(e)[:100]}",
+                                 {"error": str(e)[:200]})
+            return False
+
         logger.info(f"Memoria [{memory_type}] guardada: {user_message[:60]}")
         return True
 

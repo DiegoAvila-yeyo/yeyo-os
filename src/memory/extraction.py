@@ -4,11 +4,13 @@ Fase 3 — Arquitectura de Memoria por Namespace
 
 Guarda TODOS los mensajes del usuario directamente en Flash Memory
 sin filtros de palabras clave. El clasificador asigna el namespace.
+El clasificador de tipo determina si es preference/skill/correction/fact/conversation.
 
 Las memorias NUNCA se borran.
 """
 
 import logging
+import re
 
 from src.memory.flash_memory import FlashMemory
 
@@ -30,6 +32,70 @@ _QUESTION_STARTERS = {
     "what", "how", "when", "where", "why", "who", "which",
     "sabes", "puedes", "podrías", "puedo", "hay", "tienes",
 }
+
+# ─── Patrones heurísticos para clasificar tipo de memoria ───────────────────────
+
+# PREFERENCE: gustos, preferencias, estilo personal
+_PREFERENCE_PATTERNS = [
+    r"\b(me gusta|prefiero|me encanta|odio|detesto|no me gusta|me agrada)\b",
+    r"\b(i like|i love|i hate|i prefer|i enjoy|i dislike)\b",
+    r"\b(mi favorit[oa]|my favorite|mi estilo|prefiero usar)\b",
+    r"\b(siempre uso|suelo usar|me inclino por|opto por)\b",
+    r"\b(no me convence|me parece mejor|me quedo con)\b",
+]
+
+# SKILL: conocimientos, habilidades, experiencia
+_SKILL_PATTERNS = [
+    r"\b(sé (hacer|usar|programar|configurar|diseñar|crear))\b",
+    r"\b(aprendí a|ya sé|domino|manejo|conozco)\b",
+    r"\b(tengo experiencia|trabajo con|llevo \d+ (años|meses))\b",
+    r"\b(i know how|i can|i learned|i'm experienced|i work with)\b",
+    r"\b(mi stack|mis herramientas|uso diario)\b",
+    r"\b(especializ[oa]|experto en|nivel avanzado)\b",
+]
+
+# CORRECTION: correcciones al asistente
+_CORRECTION_PATTERNS = [
+    r"\b(no[, ]+(es[oa]?|así|eso)|está mal|estás equivocad[oa]|incorrecto)\b",
+    r"\b(te equivocas|error|corrección|corrígelo|arréglalo)\b",
+    r"\b(no era|no es así|mal[, ]+es|en realidad es)\b",
+    r"\b(that'?s wrong|not correct|actually it'?s|you'?re wrong|fix that)\b",
+    r"\b(quise decir|me refiero a|lo que quiero es)\b",
+    r"\b(no[, ]+(quiero|necesito|pedí) eso)\b",
+]
+
+# Compilar patrones para rendimiento
+_PREF_RE = [re.compile(p, re.IGNORECASE) for p in _PREFERENCE_PATTERNS]
+_SKILL_RE = [re.compile(p, re.IGNORECASE) for p in _SKILL_PATTERNS]
+_CORR_RE = [re.compile(p, re.IGNORECASE) for p in _CORRECTION_PATTERNS]
+
+
+def classify_memory_type(user_message: str, assistant_message: str | None = None) -> str:
+    """
+    Clasifica el tipo de memoria basado en heurísticas del mensaje.
+    Prioridad: correction > preference > skill > fact
+    
+    correction tiene prioridad porque corregir un error es lo más valioso.
+    """
+    text = user_message.strip().lower()
+
+    # CORRECTION — máxima prioridad (evitar repetir errores)
+    for pattern in _CORR_RE:
+        if pattern.search(text):
+            return "correction"
+
+    # PREFERENCE — gustos personales
+    for pattern in _PREF_RE:
+        if pattern.search(text):
+            return "preference"
+
+    # SKILL — habilidades y conocimiento
+    for pattern in _SKILL_RE:
+        if pattern.search(text):
+            return "skill"
+
+    # FACT — default para declaraciones informativas
+    return "fact"
 
 
 def _is_noise(message: str) -> bool:
@@ -61,6 +127,7 @@ class MemoryExtractor:
     """
     Guarda mensajes del usuario directamente en Flash Memory.
     No filtra por palabras clave — guarda todo excepto ruido puro.
+    Clasifica automáticamente el tipo (preference/skill/correction/fact).
     El NamespaceClassifier asigna el namespace en background.
     """
 
@@ -74,6 +141,7 @@ class MemoryExtractor:
         flash_memory: FlashMemory,
         embedding_service=None,
         namespace: str = "chat:usuario",
+        assistant_message: str | None = None,
     ) -> bool:
         """
         Guarda el mensaje del usuario directamente sin filtros.
@@ -81,6 +149,8 @@ class MemoryExtractor:
         """
         if _is_noise(user_message):
             return False
+
+        memory_type = classify_memory_type(user_message, assistant_message)
 
         embedding = None
         if embedding_service:
@@ -95,13 +165,13 @@ class MemoryExtractor:
 
         await flash_memory.store(
             content=user_message,
-            type="fact",
-            metadata={"original_text": user_message},
+            type=memory_type,
+            metadata={"original_text": user_message, "classified_type": memory_type},
             embedding=embedding,
             source="chat_extraction",
             namespace=namespace,
         )
-        logger.debug(f"Mensaje guardado directamente: {user_message[:60]}")
+        logger.info(f"Memoria [{memory_type}] guardada: {user_message[:60]}")
         return True
 
     async def should_extract(self, message: str) -> bool:
@@ -112,9 +182,10 @@ class MemoryExtractor:
         """Compatibilidad con código existente — retorna el mensaje como un solo hecho."""
         if _is_noise(user_message):
             return []
+        memory_type = classify_memory_type(user_message, assistant_message)
         return [{
             "content": user_message,
-            "type": "fact",
-            "metadata": {"original_text": user_message},
+            "type": memory_type,
+            "metadata": {"original_text": user_message, "classified_type": memory_type},
         }]
 

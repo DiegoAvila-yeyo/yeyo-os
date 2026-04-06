@@ -162,6 +162,7 @@ class ContextualChatService:
                 flash_memory=self.memory,
                 embedding_service=self.embeddings,
                 namespace="chat:usuario",  # default, clasificador lo actualiza
+                assistant_message=assistant_response,
             )
             if stored:
                 memory_id = None

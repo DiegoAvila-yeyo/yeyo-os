@@ -36,6 +36,7 @@ import { VideoNodeLayout } from '@/components/nodes/VideoNodeLayout';
 import { CodeNodeLayout } from '@/components/nodes/CodeNodeLayout';
 import { AutomationNodeLayout } from '@/components/nodes/AutomationNodeLayout';
 import { MemoryNodeLayout } from '@/components/nodes/MemoryNodeLayout';
+import { MemoryMapLayout } from '@/components/nodes/MemoryMapLayout';
 import ChatPanel from '@/components/chat/ChatPanel';
 
 // ─── Nodos disponibles en el Hub ───────────────────────────────────────────────
@@ -46,9 +47,10 @@ const NODOS_HUB: NodoLibreInfo[] = [
   { id: 'automacion',label: 'Automatizar',tipo: 'automation', icono: '⚡',  colorAcento: '#ffa500' },
   { id: 'chat',      label: 'Chat',       tipo: 'chat',       icono: '💬',  colorAcento: '#ff4444' },
   { id: 'memoria',   label: 'Memoria',    tipo: 'memory',     icono: '🧠',  colorAcento: '#00bcd4' },
+  { id: 'mapa',      label: 'MemoryMap',  tipo: 'memory',     icono: '🗺️',  colorAcento: '#9c27b0' },
 ];
 
-type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | null;
+type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | 'mapa' | null;
 
 // ─── Workspace Router ──────────────────────────────────────────────────────────
 function WorkspaceRouter({
@@ -112,6 +114,7 @@ function WorkspaceRouter({
     case 'codigo':     return wrapper(<CodeNodeLayout chatMessages={codeMessages} onChatSend={onCodeChatSend} />);
     case 'automacion': return wrapper(<AutomationNodeLayout />);
     case 'memoria':    return wrapper(<MemoryNodeLayout />);
+    case 'mapa':       return wrapper(<MemoryMapLayout />);
     default:           return null;
   }
 }
@@ -134,6 +137,7 @@ function HubPrincipal() {
     codigo:     { label: 'Código',      icono: '💻' },
     automacion: { label: 'Automatizar', icono: '⚡' },
     memoria:    { label: 'Memoria',     icono: '🧠' },
+    mapa:       { label: 'MemoryMap',   icono: '🗺️' },
   };
 
   const abrirNodo = useCallback((nodeId: string) => {
@@ -142,7 +146,7 @@ function HubPrincipal() {
       useChatStore.getState().setPanelOpen(true);
       return;
     }
-    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria'].includes(nodeId)) return;
+    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria', 'mapa'].includes(nodeId)) return;
     const ws = nodeId as WorkspaceId;
     setActiveWorkspace(ws);
     const info = WORKSPACE_LABELS[nodeId];

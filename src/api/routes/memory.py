@@ -685,3 +685,56 @@ async def debug_audit_log(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/map/distribution")
+async def memory_map_distribution(
+    flash_memory=Depends(get_flash_memory),
+):
+    """
+    🗺️ Distribución de memorias por namespace × tier × type.
+    Alimenta el MemoryMap (Heatmap + Tree views).
+    """
+    try:
+        async with flash_memory.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT namespace, tier, type, 
+                       COUNT(*) as count,
+                       SUM(access_count) as total_accesses,
+                       AVG(COALESCE(importance, 0.5)) as avg_importance
+                FROM flash_memories
+                GROUP BY namespace, tier, type
+                ORDER BY namespace, tier, type
+            """)
+
+            ns_rows = await conn.fetch("""
+                SELECT namespace, COUNT(*) as count,
+                       SUM(access_count) as total_accesses
+                FROM flash_memories
+                GROUP BY namespace
+                ORDER BY count DESC
+            """)
+
+        return {
+            "cells": [
+                {
+                    "namespace": row["namespace"] or "sin_namespace",
+                    "tier": row["tier"],
+                    "type": row["type"],
+                    "count": row["count"],
+                    "total_accesses": row["total_accesses"],
+                    "avg_importance": float(row["avg_importance"]) if row["avg_importance"] else 0.5,
+                }
+                for row in rows
+            ],
+            "namespaces": [
+                {
+                    "namespace": row["namespace"] or "sin_namespace",
+                    "count": row["count"],
+                    "total_accesses": row["total_accesses"],
+                }
+                for row in ns_rows
+            ],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

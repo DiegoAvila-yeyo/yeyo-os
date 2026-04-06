@@ -215,7 +215,21 @@ class ImageGenerationNode(NodeBase):
             )
             self._gallery.append(generated)
 
-            # 6. Liberar GPU para que Ollama pueda volver
+            # 6. Guardar en memoria — la IA aprende de lo que generas
+            if self._memory_service:
+                try:
+                    await self._memory_service.store_result(
+                        content=f"Prompt: {prompt} | Estilo: {style} | Prompt mejorado: {final_prompt}",
+                        namespace="imagen:usuario",
+                        memory_type="preference",
+                        source="image_generation",
+                        metadata={"prompt": prompt, "style": style, "resolution": resolution,
+                                  "enhanced_prompt": final_prompt, "image_id": generated.id},
+                    )
+                except Exception:
+                    pass  # No bloquear generación por error de memoria
+
+            # 7. Liberar GPU para que Ollama pueda volver
             await self.release_gpu()
             self._sd_pipeline = None
 

@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/v1/code", tags=["code"])
 
 _ia_provider = None
 _code_ia_provider = None
+_memory_service = None
 
 
 def set_ia_provider(ia):
@@ -24,6 +25,11 @@ def set_ia_provider(ia):
 def set_code_ia_provider(ia):
     global _code_ia_provider
     _code_ia_provider = ia
+
+
+def set_memory_service(ms):
+    global _memory_service
+    _memory_service = ms
 
 
 class CodeGenerateRequest(BaseModel):
@@ -40,7 +46,7 @@ async def generate_code(request: CodeGenerateRequest) -> dict:
 
     try:
         from src.nodes.code.dojo import CodeDojo
-        dojo = CodeDojo(ia)
+        dojo = CodeDojo(ia, memory_service=_memory_service)
         resultado = await dojo.ejecutar(
             pedido=request.prompt,
             lenguaje=request.language,

@@ -384,8 +384,9 @@ class CodeDojo:
 
     MAX_INTENTOS_BACKEND = 3
 
-    def __init__(self, ia: IAProvider):
+    def __init__(self, ia: IAProvider, memory_service=None):
         self._ia = ia
+        self._memory_service = memory_service
         self._critico = AgenteCritico(ia)
         self._sandbox = SandboxEjecucion()
         self._agentes = {k: AgenteBase(ia, k) for k in AGENTES}
@@ -409,13 +410,24 @@ class CodeDojo:
         """
         resultado = ResultadoDojo(codigo_final="", lenguaje=lenguaje)
 
+        # Paso 0: Buscar contexto de memoria (buenas prácticas + preferencias)
+        memory_context = ""
+        if self._memory_service:
+            try:
+                memory_context = await self._memory_service.get_code_context(
+                    f"{lenguaje} {pedido}", limit=5
+                )
+            except Exception:
+                pass
+
         # Paso 1: Arquitecto planifica
         plan = ""
         if incluir_arquitectura:
             logger.info("[dojo] Paso 1: Arquitecto planificando...")
-            plan = await self._agentes["arquitecto"].ejecutar(
-                f"Planifica la arquitectura para: {pedido}\nLenguaje: {lenguaje}"
-            )
+            architect_prompt = f"Planifica la arquitectura para: {pedido}\nLenguaje: {lenguaje}"
+            if memory_context:
+                architect_prompt += f"\n\n[BUENAS PRÁCTICAS Y PREFERENCIAS DEL USUARIO]\n{memory_context}"
+            plan = await self._agentes["arquitecto"].ejecutar(architect_prompt)
             resultado.plan_arquitectura = plan
             logger.debug(f"[dojo] Plan: {plan[:200]}")
 
@@ -427,6 +439,8 @@ class CodeDojo:
         contexto_backend = f"{pedido}\nLenguaje: {lenguaje}"
         if plan:
             contexto_backend += f"\n\nPLAN DE ARQUITECTURA:\n{plan}"
+        if memory_context:
+            contexto_backend += f"\n\n[BUENAS PRÁCTICAS Y PREFERENCIAS]\n{memory_context}"
 
         for intento in range(self.MAX_INTENTOS_BACKEND):
             resultado.intentos_backend = intento + 1
@@ -498,6 +512,27 @@ class CodeDojo:
 
         resultado.exito = True
         logger.info(f"[dojo] ✅ Pipeline completado: {resultado.resumen()}")
+
+        # Guardar código exitoso en memoria
+        if self._memory_service and resultado.codigo_final:
+            try:
+                await self._memory_service.store_result(
+                    content=f"Code Dojo ({lenguaje}): {pedido} — Score: {resultado.score_critico:.1f}",
+                    namespace="codigo:usuario",
+                    memory_type="skill",
+                    source="code_dojo",
+                    metadata={
+                        "language": lenguaje,
+                        "score_critico": resultado.score_critico,
+                        "score_seguridad": resultado.score_seguridad,
+                        "score_performance": resultado.score_performance,
+                        "tests_passed": resultado.tests_pasaron,
+                        "code_preview": resultado.codigo_final[:300],
+                    },
+                )
+            except Exception:
+                pass
+
         return resultado
 
     async def _ejecutar_testing(

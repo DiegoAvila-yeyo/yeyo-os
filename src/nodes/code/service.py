@@ -184,7 +184,23 @@ class CodeNode(NodeBase):
             system=system,
             temperature=0.5,
         )
-        return {"code": response.content.strip(), "language": language}
+        code = response.content.strip()
+
+        # Guardar código generado exitoso en memoria
+        if self._memory_service and code and not code.startswith("Error"):
+            try:
+                await self._memory_service.store_result(
+                    content=f"Generé código {language}: {prompt}",
+                    namespace="codigo:usuario",
+                    memory_type="skill",
+                    source="code_generation",
+                    metadata={"language": language, "prompt": prompt,
+                              "code_preview": code[:300]},
+                )
+            except Exception:
+                pass
+
+        return {"code": code, "language": language}
 
     async def _suggest_fix(self, code: str, error: str) -> dict:
         """Sugiere fix para un error. Usa buenas prácticas de código si hay memoria."""

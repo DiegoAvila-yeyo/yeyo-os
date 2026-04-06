@@ -184,10 +184,21 @@ class AutomationNode(NodeBase):
         }
 
     async def _execute_pipeline(self, input_data: Optional[dict] = None) -> dict:
-        """Ejecuta el pipeline visual."""
+        """Ejecuta el pipeline visual. Consulta memorias previas para contexto."""
         validation = await self._validate_pipeline()
         if not validation.get("valid"):
             return {"error": f"Pipeline inválido: {validation.get('error')}"}
+
+        # Consultar memorias de automatizaciones previas
+        if self._memory_service:
+            try:
+                labels = [n.label for n in self._visual_nodes.values()]
+                query = " ".join(labels)
+                context = await self._memory_service.get_automation_context(query, limit=3)
+                if context:
+                    logger.debug(f"Contexto de memoria para pipeline: {context[:100]}")
+            except Exception:
+                pass
 
         # Build execution order via topological sort
         in_degree: dict[str, int] = {nid: 0 for nid in self._visual_nodes}
@@ -206,11 +217,28 @@ class AutomationNode(NodeBase):
                 if in_degree[neighbor] == 0:
                     queue.append(neighbor)
 
+        execution_labels = [
+            self._visual_nodes[nid].label for nid in execution_order
+        ]
+
+        # Guardar pipeline ejecutado en memoria
+        if self._memory_service and execution_labels:
+            try:
+                workflow = " → ".join(execution_labels)
+                await self._memory_service.store_result(
+                    content=f"Pipeline ejecutado: {workflow}",
+                    namespace="automatizacion:usuario",
+                    memory_type="skill",
+                    source="automation_execution",
+                    metadata={"steps": execution_labels,
+                              "steps_count": len(execution_labels)},
+                )
+            except Exception:
+                pass
+
         return {
             "status": "completed",
-            "execution_order": [
-                self._visual_nodes[nid].label for nid in execution_order
-            ],
+            "execution_order": execution_labels,
             "steps_executed": len(execution_order),
         }
 

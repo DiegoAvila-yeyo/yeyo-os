@@ -215,12 +215,43 @@ function HubPrincipal() {
         body: JSON.stringify({ prompt: mensaje, language: 'python' }),
       });
       const data = await res.json();
-      const respuesta = data?.codigo || data?.detail || 'Sin respuesta del servidor';
-      const resumen = data?.resumen ? `\n\n_${data.resumen}_` : '';
+      const codigo = data?.codigo || '';
+      const aprobado = data?.aprobado ?? false;
+
+      // Build detailed response
+      let content = '';
+      if (codigo) {
+        content += `\`\`\`python\n${codigo}\n\`\`\`\n`;
+      }
+
+      // Verification badges
+      const ast = data?.ast_valido ? '✅' : '❌';
+      const tests = data?.tests_pasaron ? '✅' : '❌';
+      const estado = aprobado ? '✅ APROBADO' : '❌ RECHAZADO';
+
+      content += `${estado}`;
+      content += ` | Crítico: ${(data?.score ?? 0).toFixed(1)}/10`;
+      content += ` | Seguridad: ${(data?.score_seguridad ?? 0).toFixed(1)}/10`;
+      content += ` | Performance: ${(data?.score_performance ?? 0).toFixed(1)}/10`;
+      content += ` | AST: ${ast}`;
+      content += ` | Tests: ${tests}`;
+
+      // Show failure reason if rejected
+      if (!aprobado && data?.razon_falla) {
+        content += `\n\n⚠️ **Razón**: ${data.razon_falla}`;
+      }
+
+      // Show test output if tests failed
+      if (!data?.tests_pasaron && data?.tests_output) {
+        content += `\n\n📋 **Test output**:\n\`\`\`\n${data.tests_output}\n\`\`\``;
+      }
+
+      if (!codigo && !aprobado) {
+        content = `❌ No se pudo generar código\n\n⚠️ ${data?.razon_falla || data?.detail || 'Error desconocido'}`;
+      }
+
       setCodeMessages(prev => prev.map(m =>
-        m.id === loadingId
-          ? { ...m, content: `\`\`\`python\n${respuesta}\n\`\`\`${resumen}` }
-          : m
+        m.id === loadingId ? { ...m, content } : m
       ));
     } catch (err) {
       setCodeMessages(prev => prev.map(m =>

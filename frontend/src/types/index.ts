@@ -36,6 +36,8 @@ export interface Memory {
   metadata: Record<string, unknown>;
   source: string;
   namespace?: string;
+  importance?: number;
+  tags?: string[];
   created_at: string | null;
   accessed_at: string | null;
 }

@@ -32,8 +32,9 @@ interface MemoryState {
   loadingStats: boolean;
   loadingAssociations: boolean;
   error: string | null;
+  mode: 'browse' | 'add';
 
-  // Acciones
+  // Acciones de lectura
   fetchRecent: (limit?: number) => Promise<void>;
   searchMemories: (q: string, limit?: number) => Promise<void>;
   fetchStats: () => Promise<void>;
@@ -42,6 +43,14 @@ interface MemoryState {
   setSearchQuery: (q: string) => void;
   setFilter: <K extends keyof MemoryFilters>(key: K, value: MemoryFilters[K]) => void;
   clearError: () => void;
+  setMode: (mode: 'browse' | 'add') => void;
+
+  // Acciones de escritura
+  createMemory: (content: string, type: MemoryType, namespace: string, importance?: number) => Promise<boolean>;
+  updateImportance: (id: string, importance: number) => Promise<boolean>;
+  sendFeedback: (id: string, feedbackType: string, comment?: string) => Promise<boolean>;
+  promoteTier: (id: string) => Promise<boolean>;
+  demoteTier: (id: string) => Promise<boolean>;
 }
 
 export const useMemoryStore = create<MemoryState>((set, get) => ({
@@ -55,6 +64,7 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
   loadingStats: false,
   loadingAssociations: false,
   error: null,
+  mode: 'browse',
 
   fetchRecent: async (limit = 50) => {
     set({ loading: true, error: null });
@@ -126,4 +136,101 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
     set((s) => ({ filters: { ...s.filters, [key]: value } })),
 
   clearError: () => set({ error: null }),
+
+  setMode: (mode) => set({ mode }),
+
+  // ─── Acciones de escritura ──────────────────────────────────────────────────
+
+  createMemory: async (content, type, namespace, importance = 0.5) => {
+    try {
+      const res = await fetch(`${API}/manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, type, namespace, importance }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? `HTTP ${res.status}`);
+      }
+      // Refrescar lista y stats
+      get().fetchRecent(50);
+      get().fetchStats();
+      return true;
+    } catch (err) {
+      set({ error: String(err) });
+      return false;
+    }
+  },
+
+  updateImportance: async (id, importance) => {
+    try {
+      const res = await fetch(`${API}/${id}/importance`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ importance }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Actualizar memoria seleccionada in-place
+      const { selectedMemory } = get();
+      if (selectedMemory?.id === id) {
+        set({ selectedMemory: { ...selectedMemory, importance } });
+      }
+      return true;
+    } catch (err) {
+      set({ error: String(err) });
+      return false;
+    }
+  },
+
+  sendFeedback: async (id, feedbackType, comment) => {
+    try {
+      const res = await fetch(`${API}/${id}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback_type: feedbackType, comment }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return true;
+    } catch (err) {
+      set({ error: String(err) });
+      return false;
+    }
+  },
+
+  promoteTier: async (id) => {
+    try {
+      const res = await fetch(`${API}/${id}/promote-tier`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      // Actualizar tier de la memoria seleccionada
+      const { selectedMemory, memories } = get();
+      if (selectedMemory?.id === id) {
+        set({ selectedMemory: { ...selectedMemory, tier: data.to } });
+      }
+      set({ memories: memories.map(m => m.id === id ? { ...m, tier: data.to } : m) });
+      get().fetchStats();
+      return true;
+    } catch (err) {
+      set({ error: String(err) });
+      return false;
+    }
+  },
+
+  demoteTier: async (id) => {
+    try {
+      const res = await fetch(`${API}/${id}/demote-tier`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const { selectedMemory, memories } = get();
+      if (selectedMemory?.id === id) {
+        set({ selectedMemory: { ...selectedMemory, tier: data.to } });
+      }
+      set({ memories: memories.map(m => m.id === id ? { ...m, tier: data.to } : m) });
+      get().fetchStats();
+      return true;
+    } catch (err) {
+      set({ error: String(err) });
+      return false;
+    }
+  },
 }));

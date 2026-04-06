@@ -242,11 +242,217 @@ function MemoryDetail({ memory }: { memory: Memory }) {
   );
 }
 
+// ─── Namespaces disponibles ────────────────────────────────────────────────────
+const NAMESPACES = [
+  'chat:usuario',
+  'imagen:usuario', 'imagen:conocimiento',
+  'codigo:usuario', 'codigo:conocimiento',
+  'video:usuario', 'video:conocimiento', 'video:acciones_humanas',
+  'automatizacion:usuario', 'automatizacion:conocimiento',
+  'sistema:docs', 'sistema:prompts',
+];
+
+// ─── Componente: barra de acciones sobre una memoria ──────────────────────────
+function MemoryActions({ memory }: { memory: Memory }) {
+  const { promoteTier, demoteTier, sendFeedback, updateImportance } = useMemoryStore();
+  const [importance, setImportance] = useState(memory.importance ?? 0.5);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const tierOrder: MemoryTier[] = ['COLD', 'WARM', 'HOT'];
+  const tierIdx = tierOrder.indexOf(memory.tier);
+  const canPromote = tierIdx < tierOrder.length - 1;
+  const canDemote = tierIdx > 0;
+
+  const handleImportance = (val: number) => {
+    setImportance(val);
+    updateImportance(memory.id, val);
+  };
+
+  const handleFeedback = async (type: string) => {
+    const ok = await sendFeedback(memory.id, type);
+    if (ok) setFeedback(type);
+    setTimeout(() => setFeedback(null), 2000);
+  };
+
+  const btnStyle = (active = false): React.CSSProperties => ({
+    fontSize: 11, padding: '4px 10px', borderRadius: 5, cursor: 'pointer',
+    border: `1px solid ${active ? '#4fc3f7' : '#1E3A5F'}`,
+    background: active ? 'rgba(79,195,247,0.15)' : 'transparent',
+    color: active ? '#4fc3f7' : '#778',
+    transition: 'all 150ms',
+  });
+
+  return (
+    <div style={{ padding: '12px 20px', borderTop: '1px solid #1a1a2e', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Tier controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 10, color: '#556', fontFamily: 'monospace', width: 60 }}>TIER</span>
+        <button onClick={() => canDemote && demoteTier(memory.id)} disabled={!canDemote} style={{ ...btnStyle(), opacity: canDemote ? 1 : 0.3 }}>
+          ↓ Degradar
+        </button>
+        <TierBadge tier={memory.tier} />
+        <button onClick={() => canPromote && promoteTier(memory.id)} disabled={!canPromote} style={{ ...btnStyle(), opacity: canPromote ? 1 : 0.3 }}>
+          ↑ Promover
+        </button>
+      </div>
+
+      {/* Importance slider */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 10, color: '#556', fontFamily: 'monospace', width: 60 }}>IMPORT.</span>
+        <input
+          type="range" min={0} max={1} step={0.05} value={importance}
+          onChange={e => handleImportance(Number(e.target.value))}
+          style={{ flex: 1, accentColor: '#4fc3f7' }}
+        />
+        <span style={{ fontSize: 11, color: '#4fc3f7', fontFamily: 'monospace', width: 32, textAlign: 'right' }}>
+          {(importance * 100).toFixed(0)}%
+        </span>
+      </div>
+
+      {/* Feedback buttons */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, color: '#556', fontFamily: 'monospace', width: 60 }}>FEEDBACK</span>
+        {[
+          { type: 'positive', icon: '👍', label: 'Buena' },
+          { type: 'negative', icon: '👎', label: 'Mala' },
+          { type: 'favorite', icon: '⭐', label: 'Favorita' },
+          { type: 'training_approved', icon: '🎯', label: 'Training' },
+          { type: 'reject', icon: '❌', label: 'Rechazar' },
+        ].map(fb => (
+          <button key={fb.type} onClick={() => handleFeedback(fb.type)} style={btnStyle(feedback === fb.type)}>
+            {fb.icon} {fb.label}
+          </button>
+        ))}
+      </div>
+
+      {feedback && (
+        <div style={{ fontSize: 11, color: '#4caf50', fontFamily: 'monospace', textAlign: 'center' }}>
+          ✓ Feedback &quot;{feedback}&quot; registrado
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Componente: formulario para agregar memorias ─────────────────────────────
+function AddMemoryForm() {
+  const { createMemory, setMode } = useMemoryStore();
+  const [content, setContent] = useState('');
+  const [type, setType] = useState<MemoryType>('fact');
+  const [namespace, setNamespace] = useState('chat:usuario');
+  const [importance, setImportance] = useState(0.5);
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const handleSave = async () => {
+    if (!content.trim()) return;
+    setSaving(true);
+    const ok = await createMemory(content.trim(), type, namespace, importance);
+    setSaving(false);
+    if (ok) {
+      setSuccess(true);
+      setContent('');
+      setTimeout(() => setSuccess(false), 2000);
+    }
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 10, color: '#4fc3f7', fontFamily: 'monospace', letterSpacing: 1, marginBottom: 6, display: 'block',
+  };
+  const selectStyle: React.CSSProperties = {
+    width: '100%', background: '#0d0d1a', border: '1px solid #1E3A5F',
+    borderRadius: 6, padding: '8px 10px', color: '#e0f7fa', fontSize: 12,
+    outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box',
+  };
+
+  return (
+    <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16, height: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 14, color: '#e0f7fa', fontWeight: 600 }}>➕ Nueva Memoria</span>
+        <button onClick={() => setMode('browse')} style={{
+          fontSize: 10, padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
+          border: '1px solid #1E3A5F', background: 'transparent', color: '#556',
+        }}>
+          ← Volver
+        </button>
+      </div>
+
+      {/* Namespace */}
+      <div>
+        <label style={labelStyle}>NAMESPACE</label>
+        <select value={namespace} onChange={e => setNamespace(e.target.value)} style={selectStyle}>
+          {NAMESPACES.map(ns => <option key={ns} value={ns}>{ns}</option>)}
+        </select>
+      </div>
+
+      {/* Type */}
+      <div>
+        <label style={labelStyle}>TIPO</label>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {(['fact', 'preference', 'skill', 'correction', 'conversation'] as MemoryType[]).map(t => (
+            <button key={t} onClick={() => setType(t)} style={{
+              fontSize: 11, padding: '5px 10px', borderRadius: 5, cursor: 'pointer',
+              border: `1px solid ${type === t ? '#4fc3f7' : '#1E3A5F'}`,
+              background: type === t ? 'rgba(79,195,247,0.15)' : 'transparent',
+              color: type === t ? '#4fc3f7' : '#778',
+            }}>
+              {TYPE_ICON[t]} {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Importance */}
+      <div>
+        <label style={labelStyle}>IMPORTANCIA: {(importance * 100).toFixed(0)}%</label>
+        <input
+          type="range" min={0} max={1} step={0.05} value={importance}
+          onChange={e => setImportance(Number(e.target.value))}
+          style={{ width: '100%', accentColor: '#4fc3f7' }}
+        />
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <label style={labelStyle}>CONTENIDO</label>
+        <textarea
+          value={content}
+          onChange={e => setContent(e.target.value)}
+          placeholder="Escribe el contenido de la memoria…"
+          style={{
+            ...selectStyle,
+            flex: 1, resize: 'none', lineHeight: 1.6,
+            minHeight: 120,
+          }}
+        />
+      </div>
+
+      {/* Save */}
+      <button onClick={handleSave} disabled={saving || !content.trim()} style={{
+        padding: '10px 16px', borderRadius: 8, cursor: saving ? 'wait' : 'pointer',
+        background: content.trim() ? 'rgba(79,195,247,0.20)' : 'rgba(79,195,247,0.05)',
+        border: `1px solid ${content.trim() ? '#4fc3f7' : '#1E3A5F'}`,
+        color: content.trim() ? '#4fc3f7' : '#334',
+        fontSize: 13, fontWeight: 600, fontFamily: 'monospace',
+        transition: 'all 150ms',
+      }}>
+        {saving ? '⏳ Guardando…' : success ? '✓ ¡Memoria creada!' : '💾 Guardar Memoria'}
+      </button>
+
+      {success && (
+        <div style={{ fontSize: 11, color: '#4caf50', fontFamily: 'monospace', textAlign: 'center' }}>
+          ✓ Memoria guardada exitosamente en {namespace}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Componente principal ──────────────────────────────────────────────────────
 export function MemoryNodeLayout() {
   const {
-    memories, stats, selectedMemory, searchQuery, filters, loading, error,
-    fetchRecent, fetchStats, searchMemories, selectMemory, setSearchQuery, setFilter, clearError,
+    memories, stats, selectedMemory, searchQuery, filters, loading, error, mode,
+    fetchRecent, fetchStats, searchMemories, selectMemory, setSearchQuery, setFilter, clearError, setMode,
   } = useMemoryStore();
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -412,13 +618,28 @@ export function MemoryNodeLayout() {
         </div>
       </div>
 
-      {/* ── COL 2: Detalle / Stats (flex) ─────────────────────────────────── */}
+      {/* ── COL 2: Detalle / Stats / Add (flex) ────────────────────────────── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid #1E3A5F' }}>
-        <div style={S.colHeader}>
-          {selectedMemory ? `DETALLE — ${selectedMemory.id.slice(0, 8)}…` : 'ESTADÍSTICAS'}
+        <div style={{ ...S.colHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>
+            {mode === 'add' ? '➕ NUEVA MEMORIA' : selectedMemory ? `DETALLE — ${selectedMemory.id.slice(0, 8)}…` : 'ESTADÍSTICAS'}
+          </span>
+          <button
+            onClick={() => setMode(mode === 'add' ? 'browse' : 'add')}
+            style={{
+              fontSize: 10, padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
+              border: `1px solid ${mode === 'add' ? '#ff5050' : '#4fc3f7'}`,
+              background: mode === 'add' ? 'rgba(255,80,80,0.10)' : 'rgba(79,195,247,0.10)',
+              color: mode === 'add' ? '#ff5050' : '#4fc3f7',
+            }}
+          >
+            {mode === 'add' ? '✕ Cancelar' : '+ Agregar'}
+          </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {selectedMemory ? (
+          {mode === 'add' ? (
+            <AddMemoryForm />
+          ) : selectedMemory ? (
             <>
               <div style={{ padding: '6px 14px', borderBottom: '1px solid #1a1a2e' }}>
                 <button
@@ -432,6 +653,7 @@ export function MemoryNodeLayout() {
                 </button>
               </div>
               <MemoryDetail memory={selectedMemory} />
+              <MemoryActions memory={selectedMemory} />
             </>
           ) : (
             <StatsPanel />

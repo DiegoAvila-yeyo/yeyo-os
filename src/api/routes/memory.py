@@ -1,12 +1,17 @@
 """
 YeyoOS — Memory API Endpoints
-Micro-fase 2.16 — Capa 2: Cerebro
+Micro-fase 3.30 — Capa 3: Cuerpo
 
 Endpoints REST para operaciones de Flash Memory:
-- GET /api/v1/memory/search — búsqueda semántica
-- GET /api/v1/memory/stats — estadísticas
-- GET /api/v1/memory/{id} — obtener memoria
-- GET /api/v1/memory/{id}/associations — asociaciones
+- GET  /api/v1/memory/search — búsqueda semántica
+- GET  /api/v1/memory/stats — estadísticas
+- GET  /api/v1/memory/{id} — obtener memoria
+- GET  /api/v1/memory/{id}/associations — asociaciones
+- POST /api/v1/memory/manual — crear memoria manualmente
+- PUT  /api/v1/memory/{id}/importance — ajustar importancia
+- POST /api/v1/memory/{id}/feedback — dar feedback
+- POST /api/v1/memory/{id}/promote-tier — promover tier
+- POST /api/v1/memory/{id}/demote-tier — degradar tier
 - DELETE /api/v1/memory/{id} — PROHIBIDO (405)
 
 ⚠️ NO existe endpoint DELETE. Las memorias NUNCA se borran.
@@ -62,6 +67,32 @@ class AssociationResponse(BaseModel):
     tier: str
     relation_type: Optional[str] = None
     strength: Optional[float] = None
+
+
+# ========== Request Models ==========
+
+class ManualMemoryRequest(BaseModel):
+    """Request para crear una memoria manualmente."""
+    content: str = Field(..., min_length=1, max_length=10000)
+    type: str = Field(default="fact", pattern="^(conversation|preference|fact|correction|skill)$")
+    namespace: str = Field(default="chat:usuario")
+    tier: str = Field(default="WARM", pattern="^(HOT|WARM|COLD)$")
+    importance: float = Field(default=0.5, ge=0.0, le=1.0)
+    source: str = Field(default="manual")
+    metadata: dict = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+
+
+class FeedbackRequest(BaseModel):
+    """Request para dar feedback a una memoria."""
+    feedback_type: str = Field(..., pattern="^(positive|negative|correction|favorite|reject|training_approved)$")
+    score: Optional[float] = Field(None, ge=0.0, le=1.0)
+    comment: str = Field(default="")
+
+
+class ImportanceRequest(BaseModel):
+    """Request para ajustar importancia."""
+    importance: float = Field(..., ge=0.0, le=1.0)
 
 
 # ========== Dependency Injection ==========
@@ -223,6 +254,224 @@ async def delete_memory_forbidden(memory_id: str):
             "menos relevante, será degradada automáticamente a tier COLD."
         ),
     )
+
+
+# ========== Write Endpoints ==========
+
+@router.post("/manual")
+async def create_manual_memory(
+    request: ManualMemoryRequest,
+    flash_memory=Depends(get_flash_memory),
+    embedding_service=Depends(get_embedding_service),
+):
+    """
+    Crear una memoria manualmente desde el Memory Editor.
+    El usuario elige namespace, tipo, tier e importancia.
+    """
+    try:
+        import asyncio
+        import json as _json
+
+        # Generar embedding
+        embedding = None
+        try:
+            loop = asyncio.get_event_loop()
+            embedding = await loop.run_in_executor(None, embedding_service.generate, request.content)
+        except Exception as e:
+            logger.warning(f"Embedding falló para memoria manual: {e}")
+
+        async with flash_memory.pool.acquire() as conn:
+            metadata = {**request.metadata, "tags": request.tags}
+            if embedding:
+                vector_str = "[" + ",".join(str(x) for x in embedding) + "]"
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO flash_memories
+                        (content, type, tier, namespace, source, metadata, embedding, importance, tags)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7::vector, $8, $9)
+                    RETURNING id, created_at
+                    """,
+                    request.content, request.type, request.tier, request.namespace,
+                    request.source, _json.dumps(metadata), vector_str,
+                    request.importance, request.tags,
+                )
+            else:
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO flash_memories
+                        (content, type, tier, namespace, source, metadata, importance, tags)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    RETURNING id, created_at
+                    """,
+                    request.content, request.type, request.tier, request.namespace,
+                    request.source, _json.dumps(metadata), request.importance, request.tags,
+                )
+
+        return {
+            "id": str(row["id"]),
+            "created_at": row["created_at"].isoformat(),
+            "message": f"Memoria creada en {request.namespace} ({request.tier})",
+        }
+
+    except Exception as e:
+        logger.error(f"Error creando memoria manual: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{memory_id}/importance")
+async def update_memory_importance(
+    memory_id: str,
+    request: ImportanceRequest,
+    flash_memory=Depends(get_flash_memory),
+):
+    """Ajustar la importancia de una memoria (0.0 a 1.0)."""
+    try:
+        async with flash_memory.pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE flash_memories SET importance = $1, updated_at = NOW() WHERE id = $2",
+                request.importance, memory_id,
+            )
+            if result == "UPDATE 0":
+                raise HTTPException(status_code=404, detail="Memoria no encontrada")
+        return {"memory_id": memory_id, "importance": request.importance}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{memory_id}/feedback")
+async def give_memory_feedback(
+    memory_id: str,
+    request: FeedbackRequest,
+    flash_memory=Depends(get_flash_memory),
+):
+    """
+    Dar feedback a una memoria: positive, negative, correction, favorite, reject, training_approved.
+    El feedback nunca modifica la memoria original.
+    """
+    try:
+        async with flash_memory.pool.acquire() as conn:
+            # Verificar que la memoria existe
+            exists = await conn.fetchval("SELECT 1 FROM flash_memories WHERE id = $1", memory_id)
+            if not exists:
+                raise HTTPException(status_code=404, detail="Memoria no encontrada")
+
+            await conn.execute(
+                """
+                INSERT INTO memory_feedback (memory_id, feedback_type, score, comment, source)
+                VALUES ($1, $2, $3, $4, 'user')
+                """,
+                memory_id, request.feedback_type, request.score, request.comment,
+            )
+
+            # Si es reject → degradar a COLD automáticamente
+            if request.feedback_type == "reject":
+                await conn.execute(
+                    "UPDATE flash_memories SET tier = 'COLD', updated_at = NOW() WHERE id = $1",
+                    memory_id,
+                )
+
+            # Si es training_approved → crear entrada en training corpus
+            if request.feedback_type == "training_approved":
+                mem = await conn.fetchrow("SELECT type FROM flash_memories WHERE id = $1", memory_id)
+                corpus_type = {
+                    "correction": "correction_pair",
+                    "skill": "reasoning_example",
+                    "fact": "benchmark_case",
+                    "preference": "preference_pair",
+                    "conversation": "prompt_example",
+                }.get(mem["type"], "benchmark_case")
+
+                await conn.execute(
+                    """
+                    INSERT INTO memory_training_corpus (memory_id, corpus_type, split, promoted)
+                    VALUES ($1, $2, 'train', TRUE)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    memory_id, corpus_type,
+                )
+
+        return {
+            "memory_id": memory_id,
+            "feedback_type": request.feedback_type,
+            "applied": True,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{memory_id}/promote-tier")
+async def promote_memory_tier(
+    memory_id: str,
+    flash_memory=Depends(get_flash_memory),
+):
+    """Promover memoria al tier superior: COLD→WARM→HOT."""
+    try:
+        async with flash_memory.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT tier FROM flash_memories WHERE id = $1", memory_id)
+            if not row:
+                raise HTTPException(status_code=404, detail="Memoria no encontrada")
+
+            current = row["tier"]
+            promotion = {"COLD": "WARM", "WARM": "HOT"}
+            new_tier = promotion.get(current)
+            if not new_tier:
+                return {"memory_id": memory_id, "tier": current, "message": "Ya está en HOT"}
+
+            await conn.execute(
+                "UPDATE flash_memories SET tier = $1, updated_at = NOW() WHERE id = $2",
+                new_tier, memory_id,
+            )
+            await conn.execute(
+                "INSERT INTO memory_audit_log (memory_id, action, details) VALUES ($1, 'PROMOTE', $2)",
+                memory_id, f'{{"from": "{current}", "to": "{new_tier}", "source": "manual"}}',
+            )
+
+        return {"memory_id": memory_id, "from": current, "to": new_tier}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{memory_id}/demote-tier")
+async def demote_memory_tier(
+    memory_id: str,
+    flash_memory=Depends(get_flash_memory),
+):
+    """Degradar memoria al tier inferior: HOT→WARM→COLD."""
+    try:
+        async with flash_memory.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT tier FROM flash_memories WHERE id = $1", memory_id)
+            if not row:
+                raise HTTPException(status_code=404, detail="Memoria no encontrada")
+
+            current = row["tier"]
+            demotion = {"HOT": "WARM", "WARM": "COLD"}
+            new_tier = demotion.get(current)
+            if not new_tier:
+                return {"memory_id": memory_id, "tier": current, "message": "Ya está en COLD"}
+
+            await conn.execute(
+                "UPDATE flash_memories SET tier = $1, updated_at = NOW() WHERE id = $2",
+                new_tier, memory_id,
+            )
+            await conn.execute(
+                "INSERT INTO memory_audit_log (memory_id, action, details) VALUES ($1, 'DEMOTE', $2)",
+                memory_id, f'{{"from": "{current}", "to": "{new_tier}", "source": "manual"}}',
+            )
+
+        return {"memory_id": memory_id, "from": current, "to": new_tier}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ========== Debug Endpoints ==========

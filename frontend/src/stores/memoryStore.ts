@@ -66,7 +66,7 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
   error: null,
   mode: 'browse',
 
-  fetchRecent: async (limit = 50) => {
+  fetchRecent: async (limit = 100) => {
     set({ loading: true, error: null });
     try {
       const { filters } = get();

@@ -525,7 +525,7 @@ async def debug_recent_memories(
         async with flash_memory.pool.acquire() as conn:
             query = """
                 SELECT id, content, type, tier, namespace, source,
-                       access_count, created_at, accessed_at
+                       access_count, importance, tags, created_at, accessed_at
                 FROM flash_memories
                 {where}
                 ORDER BY created_at DESC
@@ -545,12 +545,14 @@ async def debug_recent_memories(
             "memories": [
                 {
                     "id": str(row["id"]),
-                    "content": row["content"][:150] + ("..." if len(row["content"]) > 150 else ""),
+                    "content": row["content"],
                     "type": row["type"],
                     "tier": row["tier"],
                     "namespace": row["namespace"],
                     "source": row["source"],
                     "access_count": row["access_count"],
+                    "importance": row["importance"],
+                    "tags": row["tags"],
                     "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                     "accessed_at": row["accessed_at"].isoformat() if row["accessed_at"] else None,
                 }

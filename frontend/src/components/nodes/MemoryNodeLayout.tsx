@@ -496,29 +496,27 @@ export function MemoryNodeLayout() {
     setChatMessages(prev => [...prev, userMsg, { id: loadingId, role: 'assistant', content: '🔍 Buscando en memorias…' }]);
     setChatInput('');
     try {
-      const params = new URLSearchParams({ q: msg, limit: '10', threshold: '0.3' });
+      // threshold alto para solo resultados realmente relevantes, limit 5 para no saturar
+      const params = new URLSearchParams({ q: msg, limit: '5', threshold: '0.6' });
       const res = await fetch(`http://localhost:8000/api/v1/memory/search?${params}`);
       const data = await res.json();
       const results: Memory[] = data.results ?? [];
       let reply = results.length === 0
         ? '❌ No encontré memorias relacionadas.'
-        : `Encontré **${results.length}** memori${results.length === 1 ? 'a' : 'as'} relacionada${results.length === 1 ? '' : 's'}:\n\n` +
+        : `Encontré **${results.length}** memori${results.length === 1 ? 'a' : 'as'} relevante${results.length === 1 ? '' : 's'}:\n\n` +
           results.map((m, i) =>
             `**${i + 1}.** ${TYPE_ICON[m.type]} \`${m.tier}\` — ${m.content.slice(0, 120)}${m.content.length > 120 ? '…' : ''}`
           ).join('\n\n');
       setChatMessages(prev =>
         prev.map(m => m.id === loadingId ? { ...m, content: reply } : m)
       );
-      if (results.length > 0) {
-        // Actualiza la lista principal con los resultados de búsqueda
-        searchMemories(msg);
-      }
+      // No reemplazar la lista principal — el chat es solo consulta
     } catch (err) {
       setChatMessages(prev =>
         prev.map(m => m.id === loadingId ? { ...m, content: `❌ Error: ${err}` } : m)
       );
     }
-  }, [chatInput, searchMemories]);
+  }, [chatInput]);
 
   // ─── Estilos base ────────────────────────────────────────────────────────────
   const S = {

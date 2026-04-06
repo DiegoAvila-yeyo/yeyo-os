@@ -1,20 +1,13 @@
 """
 YeyoOS — Pipeline Event Buffer
-Micro-fase 3.20 — Capa 3: Cuerpo
 
-Buffer circular en memoria para eventos del pipeline de extracción.
+Buffer circular en memoria para eventos del pipeline de extracción/generación.
 El frontend lo consume via polling para visualizar el flujo de la IA en tiempo real.
 
-Cada evento tiene:
-  - step: nombre del paso (RECEIVED, NOISE_CHECK, TYPE_CLASSIFY, etc.)
-  - status: ok | error | skip
-  - detail: descripción corta
-  - metadata: datos extras (tipo, namespace, etc.)
-  - pipeline_id: agrupa los pasos de un mismo mensaje
-  - timestamp: ISO 8601
+Cada fuente (chat, code_dojo, image, automation) tiene sus propios pasos.
+El frontend se adapta dinámicamente al tipo de pipeline.
 """
 
-import time
 import uuid
 import logging
 from collections import deque
@@ -23,15 +16,50 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger("yeyoos.pipeline")
 
-# Pasos del pipeline en orden
-PIPELINE_STEPS = [
-    "RECEIVED",
-    "NOISE_CHECK",
-    "TYPE_CLASSIFY",
-    "EMBEDDING",
-    "STORED",
-    "NAMESPACE_CLASSIFY",
-]
+# ─── Definiciones de pipeline por fuente ──────────────────────────────────────
+
+PIPELINE_DEFS: dict[str, list[dict]] = {
+    "chat": [
+        {"key": "RECEIVED",           "icon": "📨", "label": "RECIBIDO"},
+        {"key": "NOISE_CHECK",        "icon": "🧹", "label": "FILTRO"},
+        {"key": "TYPE_CLASSIFY",      "icon": "🏷️", "label": "TIPO"},
+        {"key": "EMBEDDING",          "icon": "🧬", "label": "EMBEDDING"},
+        {"key": "STORED",             "icon": "💾", "label": "GUARDADO"},
+        {"key": "NAMESPACE_CLASSIFY", "icon": "📂", "label": "NAMESPACE"},
+    ],
+    "code_dojo": [
+        {"key": "RECEIVED",       "icon": "📨", "label": "RECIBIDO"},
+        {"key": "ARCHITECT",      "icon": "📐", "label": "ARQUITECTO"},
+        {"key": "BACKEND_GEN",    "icon": "⚙️", "label": "BACKEND"},
+        {"key": "CRITIC_EVAL",    "icon": "🔍", "label": "CRÍTICO"},
+        {"key": "AST_PARSE",      "icon": "🌳", "label": "AST"},
+        {"key": "TESTS_RUN",      "icon": "🧪", "label": "TESTS"},
+        {"key": "SECURITY_SCAN",  "icon": "🛡️", "label": "SEGURIDAD"},
+        {"key": "PERF_ANALYSIS",  "icon": "⚡", "label": "PERFORMANCE"},
+        {"key": "EMBEDDING",      "icon": "🧬", "label": "EMBEDDING"},
+        {"key": "STORED",         "icon": "💾", "label": "GUARDADO"},
+    ],
+    "image": [
+        {"key": "RECEIVED",  "icon": "📨", "label": "RECIBIDO"},
+        {"key": "GENERATE",  "icon": "🎨", "label": "GENERAR"},
+        {"key": "EMBEDDING", "icon": "🧬", "label": "EMBEDDING"},
+        {"key": "STORED",    "icon": "💾", "label": "GUARDADO"},
+    ],
+    "automation": [
+        {"key": "RECEIVED",     "icon": "📨", "label": "RECIBIDO"},
+        {"key": "CONTEXT_LOAD", "icon": "🧠", "label": "CONTEXTO"},
+        {"key": "EXECUTE",      "icon": "▶️",  "label": "EJECUTAR"},
+        {"key": "EMBEDDING",    "icon": "🧬", "label": "EMBEDDING"},
+        {"key": "STORED",       "icon": "💾", "label": "GUARDADO"},
+    ],
+}
+
+# Legacy flat list (union of all steps for stats)
+PIPELINE_STEPS = sorted({
+    step["key"]
+    for steps in PIPELINE_DEFS.values()
+    for step in steps
+})
 
 STEP_ORDER = {step: i for i, step in enumerate(PIPELINE_STEPS)}
 
@@ -55,17 +83,20 @@ class PipelineBuffer:
     def __init__(self, maxlen: int = 500):
         self._events: deque[PipelineEvent] = deque(maxlen=maxlen)
         self._pipelines: dict[str, list[PipelineEvent]] = {}
+        self._pipeline_sources: dict[str, str] = {}
         self._pipeline_deque: deque[str] = deque(maxlen=100)
 
-    def new_pipeline(self) -> str:
+    def new_pipeline(self, source: str = "chat") -> str:
         """Crea un nuevo pipeline_id para agrupar eventos de un mensaje."""
         pid = str(uuid.uuid4())[:8]
         self._pipelines[pid] = []
+        self._pipeline_sources[pid] = source
         self._pipeline_deque.append(pid)
         # Limpiar pipelines viejos
         while len(self._pipelines) > 100:
             old = self._pipeline_deque.popleft()
             self._pipelines.pop(old, None)
+            self._pipeline_sources.pop(old, None)
         return pid
 
     def emit(
@@ -96,7 +127,7 @@ class PipelineBuffer:
         return [e.to_dict() for e in events]
 
     def get_pipelines(self, limit: int = 20) -> list[dict]:
-        """Retorna los últimos N pipelines completos con sus eventos."""
+        """Retorna los últimos N pipelines completos con sus eventos y definición de pasos."""
         pids = list(self._pipeline_deque)[-limit:]
         result = []
         for pid in reversed(pids):
@@ -104,16 +135,18 @@ class PipelineBuffer:
             if not events:
                 continue
 
-            # Determinar estado general del pipeline
             statuses = [e.status for e in events]
             overall = "error" if "error" in statuses else "ok"
             steps_completed = [e.step for e in events]
+            source = self._pipeline_sources.get(pid, "chat")
 
             result.append({
                 "pipeline_id": pid,
+                "source": source,
                 "status": overall,
                 "steps": [e.to_dict() for e in events],
                 "steps_completed": steps_completed,
+                "step_defs": PIPELINE_DEFS.get(source, PIPELINE_DEFS["chat"]),
                 "started_at": events[0].timestamp if events else None,
                 "message_preview": next(
                     (e.metadata.get("content", "")[:80] for e in events if e.step == "RECEIVED"),

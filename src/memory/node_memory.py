@@ -97,18 +97,23 @@ class NodeMemoryService:
         memory_type: str = "skill",
         source: str = "node_generation",
         metadata: dict | None = None,
+        _pipeline_id: str | None = None,
     ) -> bool:
         """
         Guarda el resultado de una generación de nodo como memoria.
         Genera embedding y emite evento al pipeline visual.
+        Si _pipeline_id se provee, emite EMBEDDING/STORED en ese pipeline existente.
         Retorna True si se guardó exitosamente.
         """
         if not content or not content.strip():
             return False
 
-        pid = pipeline_buffer.new_pipeline()
-        pipeline_buffer.emit(pid, "RECEIVED", "ok", f"[{source}] {content[:60]}",
-                             {"content": content[:200], "source": source})
+        # Use existing pipeline or create a new one
+        pid = _pipeline_id
+        if not pid:
+            pid = pipeline_buffer.new_pipeline(source=source)
+            pipeline_buffer.emit(pid, "RECEIVED", "ok", f"[{source}] {content[:60]}",
+                                 {"content": content[:200], "source": source})
 
         embedding = None
         try:

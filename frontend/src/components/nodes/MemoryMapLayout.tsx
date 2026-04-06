@@ -608,9 +608,11 @@ interface PipelineStep {
 
 interface Pipeline {
   pipeline_id: string;
+  source: string;
   status: string;
   steps: PipelineStep[];
   steps_completed: string[];
+  step_defs: { key: string; icon: string; label: string }[];
   started_at: string | null;
   message_preview: string;
 }
@@ -619,6 +621,27 @@ interface StepStats {
   [step: string]: { total: number; ok: number; error: number; skip: number };
 }
 
+// Color assignments by step key
+const STEP_COLORS: Record<string, string> = {
+  RECEIVED:           '#4fc3f7',
+  NOISE_CHECK:        '#ffb900',
+  TYPE_CLASSIFY:      '#9c27b0',
+  EMBEDDING:          '#2196f3',
+  STORED:             '#4caf50',
+  NAMESPACE_CLASSIFY: '#00bcd4',
+  ARCHITECT:          '#ff9800',
+  BACKEND_GEN:        '#7c4dff',
+  CRITIC_EVAL:        '#e91e63',
+  AST_PARSE:          '#8bc34a',
+  TESTS_RUN:          '#00bcd4',
+  SECURITY_SCAN:      '#f44336',
+  PERF_ANALYSIS:      '#ffc107',
+  GENERATE:           '#e040fb',
+  CONTEXT_LOAD:       '#26c6da',
+  EXECUTE:            '#66bb6a',
+};
+
+// Fallback definitions (used for the global stats diagram)
 const STEP_DEFS = [
   { key: 'RECEIVED',           icon: '📨', label: 'RECIBIDO',   color: '#4fc3f7' },
   { key: 'NOISE_CHECK',        icon: '🧹', label: 'FILTRO',     color: '#ffb900' },
@@ -814,6 +837,13 @@ function PipelineView() {
                     }}>
                       {isError ? '❌ ERROR' : '✅ OK'}
                     </span>
+                    <span style={{
+                      fontSize: 9, fontFamily: 'monospace', padding: '2px 6px',
+                      borderRadius: 4, background: 'rgba(124,77,255,0.12)',
+                      color: '#b388ff', border: '1px solid #7c4dff33',
+                    }}>
+                      {pipe.source === 'code_dojo' ? '⚙️ CODE' : pipe.source === 'chat' ? '💬 CHAT' : pipe.source === 'image' ? '🎨 IMG' : pipe.source === 'automation' ? '🤖 AUTO' : pipe.source?.toUpperCase()}
+                    </span>
                     <span style={{ fontSize: 10, color: '#556', fontFamily: 'monospace' }}>
                       {pipe.pipeline_id}
                     </span>
@@ -833,12 +863,13 @@ function PipelineView() {
                     </div>
                   )}
 
-                  {/* Step flow visualization */}
+                  {/* Step flow visualization — uses pipeline-specific step defs */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-                    {STEP_DEFS.map((stepDef, i) => {
+                    {(pipe.step_defs ?? STEP_DEFS).map((stepDef: { key: string; icon: string; label: string }, i: number, arr: { key: string; icon: string; label: string }[]) => {
                       const stepEvent = pipe.steps.find(s => s.step === stepDef.key);
                       const completed = pipe.steps_completed.includes(stepDef.key);
                       const status = stepEvent?.status ?? 'pending';
+                      const stepColor = STEP_COLORS[stepDef.key] || '#556';
 
                       return (
                         <React.Fragment key={stepDef.key}>
@@ -871,10 +902,10 @@ function PipelineView() {
                           </div>
 
                           {/* Connector */}
-                          {i < STEP_DEFS.length - 1 && (
+                          {i < arr.length - 1 && (
                             <div style={{
                               flex: 1, height: 2, minWidth: 8,
-                              background: completed && pipe.steps_completed.includes(STEP_DEFS[i + 1]?.key)
+                              background: completed && pipe.steps_completed.includes(arr[i + 1]?.key)
                                 ? (status === 'error' ? '#ff505066' : '#4caf5066')
                                 : '#1a1a2e',
                               transition: 'background 300ms',

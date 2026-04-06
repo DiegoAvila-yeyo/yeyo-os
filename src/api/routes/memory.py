@@ -748,10 +748,11 @@ async def memory_pipeline_events(
     🔬 Pipeline de extracción en tiempo real.
     Retorna los últimos pipelines con sus pasos y estadísticas.
     """
-    from src.memory.pipeline_events import pipeline_buffer
+    from src.memory.pipeline_events import pipeline_buffer, PIPELINE_DEFS
 
     return {
         "pipelines": pipeline_buffer.get_pipelines(limit),
         "step_stats": pipeline_buffer.get_step_stats(),
-        "recent_events": pipeline_buffer.get_recent(limit * 6),
+        "recent_events": pipeline_buffer.get_recent(limit * 10),
+        "pipeline_defs": PIPELINE_DEFS,
     }

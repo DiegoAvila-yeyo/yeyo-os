@@ -58,6 +58,12 @@ async def generate_code(request: CodeGenerateRequest) -> dict:
             "aprobado": resultado.exito,
             "resumen": resultado.resumen(),
             "lenguaje": resultado.lenguaje,
+            "ast_valido": resultado.ast_valido,
+            "tests_pasaron": resultado.tests_pasaron,
+            "tests_output": resultado.tests_output[:500] if resultado.tests_output else "",
+            "score_seguridad": resultado.score_seguridad,
+            "score_performance": resultado.score_performance,
+            "razon_falla": resultado.razon_falla,
         }
     except Exception as e:
         logger.error(f"Error generando código: {e}")

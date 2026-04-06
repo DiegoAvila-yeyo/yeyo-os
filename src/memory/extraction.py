@@ -149,7 +149,7 @@ class MemoryExtractor:
         Retorna True si se guardó, False si era ruido puro.
         Emite eventos al pipeline_buffer para visualización en MemoryMap.
         """
-        pid = pipeline_buffer.new_pipeline()
+        pid = pipeline_buffer.new_pipeline(source="chat")
         pipeline_buffer.emit(pid, "RECEIVED", "ok", user_message[:80],
                              {"content": user_message[:200]})
 

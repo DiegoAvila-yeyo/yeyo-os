@@ -82,6 +82,15 @@ class NodeMemoryService:
             limit=limit,
         )
 
+    async def get_action_context(self, query: str, limit: int = 5) -> str:
+        """Contexto de acciones humanas: poses, movimientos, gestos de referencia."""
+        return await self.get_context(
+            query,
+            namespaces=["video:acciones_humanas"],
+            limit=limit,
+            threshold=0.25,
+        )
+
     async def get_automation_context(self, query: str, limit: int = 3) -> str:
         """Contexto de automatización: patrones + preferencias del usuario."""
         return await self.get_context(

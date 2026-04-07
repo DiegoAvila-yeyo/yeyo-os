@@ -53,6 +53,14 @@ PIPELINE_DEFS: dict[str, list[dict]] = {
         {"key": "EMBEDDING",    "icon": "🧬", "label": "EMBEDDING"},
         {"key": "STORED",       "icon": "💾", "label": "GUARDADO"},
     ],
+    "video_ingest": [
+        {"key": "RECEIVED",       "icon": "📨", "label": "RECIBIDO"},
+        {"key": "FRAME_EXTRACT",  "icon": "🎞️", "label": "FRAMES"},
+        {"key": "POSE_ESTIMATE",  "icon": "🦴", "label": "POSE"},
+        {"key": "ACTION_SEGMENT", "icon": "✂️", "label": "SEGMENTAR"},
+        {"key": "EMBEDDING",      "icon": "🧬", "label": "EMBEDDING"},
+        {"key": "STORED",         "icon": "💾", "label": "GUARDADO"},
+    ],
 }
 
 # Legacy flat list (union of all steps for stats)

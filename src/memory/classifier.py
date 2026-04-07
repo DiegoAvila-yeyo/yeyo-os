@@ -24,6 +24,7 @@ VALID_NAMESPACES = {
     "codigo:conocimiento",
     "video:usuario",
     "video:conocimiento",
+    "video:acciones_humanas",
     "automatizacion:usuario",
     "automatizacion:conocimiento",
     "sistema:docs",
@@ -44,6 +45,7 @@ Namespaces disponibles:
 - codigo:conocimiento → patrones SOLID, snippets reutilizables, buenas prácticas
 - video:usuario → estilo de edición del usuario, plataformas, temas de contenido
 - video:conocimiento → técnicas narrativas, formatos por plataforma, transiciones
+- video:acciones_humanas → movimientos corporales, poses, gestos, acciones físicas (caminar, saltar, bailar)
 - automatizacion:usuario → flujos y servicios del usuario, APIs que usa
 - automatizacion:conocimiento → patrones de automatización, webhooks, retry patterns
 - descartado → saludos, confirmaciones, ruido ("ok", "gracias", "sí", "no", "hola")

@@ -873,7 +873,7 @@ function PipelineView() {
                       borderRadius: 4, background: 'rgba(124,77,255,0.12)',
                       color: '#b388ff', border: '1px solid #7c4dff33',
                     }}>
-                      {pipe.source === 'code_dojo' ? '⚙️ CODE' : pipe.source === 'chat' ? '💬 CHAT' : pipe.source === 'image' ? '🎨 IMG' : pipe.source === 'automation' ? '🤖 AUTO' : pipe.source?.toUpperCase()}
+                      {pipe.source === 'code_dojo' ? '⚙️ CODE' : pipe.source === 'chat' ? '💬 CHAT' : pipe.source === 'image' ? '🎨 IMG' : pipe.source === 'automation' ? '🤖 AUTO' : pipe.source === 'video_ingest' ? '🎬 VIDEO' : pipe.source?.toUpperCase()}
                     </span>
                     <span style={{ fontSize: 10, color: '#556', fontFamily: 'monospace' }}>
                       {pipe.pipeline_id}

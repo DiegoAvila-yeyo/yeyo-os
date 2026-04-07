@@ -1,18 +1,28 @@
 """
 YeyoOS — Video Node API
 POST /api/v1/video/process — Chat de IA que controla el editor de video
+POST /api/v1/video/ingest  — Ingesta de videos de referencia (pose estimation)
 """
 
 import json
 import logging
+import tempfile
+from pathlib import Path
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("yeyoos.api.video")
 
 router = APIRouter(prefix="/api/v1/video", tags=["video"])
+
+_node_memory_service = None
+
+
+def set_video_memory_service(ms):
+    global _node_memory_service
+    _node_memory_service = ms
 
 
 # ========== Dependency stubs (inyectados desde main.py) ==========
@@ -101,6 +111,19 @@ async def process_video(
             f"reproduciendo={s.playing}"
         )
 
+    # Contexto de acciones humanas de referencia
+    action_ctx = ""
+    if _node_memory_service:
+        try:
+            action_ctx = await _node_memory_service.get_action_context(request.prompt, limit=3)
+            if action_ctx:
+                action_ctx = f"\nAcciones de referencia disponibles:\n{action_ctx}"
+            video_ctx = await _node_memory_service.get_video_context(request.prompt, limit=3)
+            if video_ctx:
+                memory_context += f"\nConocimiento de video:\n{video_ctx}"
+        except Exception as e:
+            logger.warning(f"Error cargando contexto de acciones: {e}")
+
     system_prompt = """Eres un asistente de edición de video integrado en YeyoOS.
 Puedes controlar directamente el editor de video mediante comandos JSON.
 
@@ -124,7 +147,7 @@ Responde SIEMPRE en este formato JSON exacto:
 
 Si no hay nada que hacer en el editor, usa commands: []"""
 
-    user_prompt = f"{memory_context}\n{editor_ctx}\n\nUsuario: {request.prompt}".strip()
+    user_prompt = f"{memory_context}\n{action_ctx}\n{editor_ctx}\n\nUsuario: {request.prompt}".strip()
 
     try:
         response = await ia.generate(
@@ -164,3 +187,75 @@ Si no hay nada que hacer en el editor, usa commands: []"""
             logger.warning(f"No se pudo guardar memoria: {e}")
 
     return VideoProcessResponse(respuesta=respuesta, commands=commands)
+
+
+# ─── Video Ingest — Pose Estimation Pipeline ─────────────────────────────────
+
+@router.post("/ingest")
+async def ingest_video(
+    file: UploadFile = File(...),
+    label: str = Form(""),
+):
+    """
+    Ingesta un video de referencia: extrae frames, corre MediaPipe Pose,
+    segmenta acciones y guarda memorias en video:acciones_humanas.
+    """
+    if not file.filename or not file.filename.lower().endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm')):
+        raise HTTPException(status_code=400, detail="Formato de video no soportado. Usa mp4, mov, avi, mkv o webm.")
+
+    if _node_memory_service is None:
+        raise HTTPException(status_code=503, detail="Memory service no inicializado")
+
+    # Save uploaded file to temp
+    with tempfile.NamedTemporaryFile(suffix=Path(file.filename).suffix, delete=False) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        from src.nodes.video.ingest import VideoIngestPipeline
+        pipeline = VideoIngestPipeline(memory_service=_node_memory_service)
+        result = await pipeline.ingest(tmp_path, label_hint=label)
+
+        return {
+            "status": "ok",
+            "filename": file.filename,
+            "duration_sec": round(result.duration_sec, 2),
+            "fps": round(result.fps, 1),
+            "total_frames": result.total_frames,
+            "poses_extracted": result.poses_extracted,
+            "segments": [
+                {
+                    "action": s.action_label,
+                    "start_sec": round(s.start_sec, 2),
+                    "end_sec": round(s.end_sec, 2),
+                    "confidence": round(s.avg_confidence, 3),
+                    "frame_count": s.frame_count,
+                }
+                for s in result.segments
+            ],
+            "memories_stored": result.memories_stored,
+        }
+    except Exception as e:
+        logger.error(f"Error en ingesta de video: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+@router.get("/actions")
+async def get_actions(
+    query: str = "",
+    limit: int = 10,
+):
+    """Busca acciones humanas en la memoria por similitud semántica."""
+    if _node_memory_service is None:
+        raise HTTPException(status_code=503, detail="Memory service no inicializado")
+
+    if not query:
+        return {"actions": [], "count": 0}
+
+    context = await _node_memory_service.get_action_context(query, limit=limit)
+    actions = [line.lstrip("- ") for line in context.split("\n") if line.strip()] if context else []
+
+    return {"actions": actions, "count": len(actions), "query": query}

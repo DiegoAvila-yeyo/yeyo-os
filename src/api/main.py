@@ -40,7 +40,7 @@ from src.api.routes.packages import router as packages_router, init_package_serv
 from src.api.routes.media import router as media_router
 from src.api.routes.nodes import router as nodes_router
 from src.api.routes.code import router as code_router, set_ia_provider as set_code_ia, set_code_ia_provider, set_memory_service as set_code_memory
-from src.api.routes.video import router as video_router, get_ia_provider as video_get_ia, get_flash_memory as video_get_memory
+from src.api.routes.video import router as video_router, get_ia_provider as video_get_ia, get_flash_memory as video_get_memory, set_video_memory_service
 
 logger = logging.getLogger("yeyoos.api")
 
@@ -241,6 +241,9 @@ def _wire_dependencies():
 
         # Wire memory service to Code Dojo
         set_code_memory(_node_memory)
+
+        # Wire memory service to Video Ingest
+        set_video_memory_service(_node_memory)
 
     # Video dependencies
     async def _real_video_ia():

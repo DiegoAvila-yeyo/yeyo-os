@@ -12,6 +12,7 @@ Servicios activos:
 - TTS local
 """
 
+import json
 import time
 import logging
 from contextlib import asynccontextmanager
@@ -388,4 +389,52 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+
+# ─── WebSocket Pipeline — tiempo real ─────────────────────────────────────────
+
+_pipeline_ws_clients: list[WebSocket] = []
+
+
+def _on_pipeline_event(event):
+    """Callback del PipelineBuffer — encola broadcast a todos los clientes WS."""
+    import asyncio
+    data = json.dumps({"type": "pipeline:event", "event": event.to_dict()})
+    disconnected = []
+    for ws in _pipeline_ws_clients:
+        try:
+            asyncio.ensure_future(ws.send_text(data))
+        except Exception:
+            disconnected.append(ws)
+    for ws in disconnected:
+        _pipeline_ws_clients.remove(ws)
+
+
+# Register listener on startup
+from src.memory.pipeline_events import pipeline_buffer as _pb
+_pb.add_listener(_on_pipeline_event)
+
+
+@app.websocket("/ws/pipeline")
+async def ws_pipeline(websocket: WebSocket):
+    """WebSocket para recibir eventos de pipeline en tiempo real."""
+    await websocket.accept()
+    _pipeline_ws_clients.append(websocket)
+    try:
+        # Send current state on connect
+        from src.memory.pipeline_events import pipeline_buffer, PIPELINE_DEFS
+        await websocket.send_text(json.dumps({
+            "type": "pipeline:init",
+            "pipelines": pipeline_buffer.get_pipelines(15),
+            "step_stats": pipeline_buffer.get_step_stats(),
+            "pipeline_defs": PIPELINE_DEFS,
+        }))
+        # Keep alive — wait for client pings or disconnect
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if websocket in _pipeline_ws_clients:
+            _pipeline_ws_clients.remove(websocket)
 

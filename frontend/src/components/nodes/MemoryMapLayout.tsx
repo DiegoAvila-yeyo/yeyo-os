@@ -39,7 +39,7 @@ interface AuditEvent {
   memory_namespace: string;
 }
 
-type ViewMode = 'engine' | 'gauges' | 'console' | 'pipeline';
+type ViewMode = 'engine' | 'gauges' | 'console' | 'pipeline' | 'grafo';
 
 // ─── Palette ───────────────────────────────────────────────────────────────────
 const C = {
@@ -661,27 +661,58 @@ function PipelineView() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [stepStats, setStepStats] = useState<StepStats>({});
   const [loading, setLoading] = useState(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const fetchPipeline = useCallback(async () => {
-    try {
-      const res = await fetch(`${API}/map/pipeline?limit=15`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setPipelines(data.pipelines ?? []);
-      setStepStats(data.step_stats ?? {});
-    } catch {
-      // silent
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    fetchPipeline();
-    intervalRef.current = setInterval(fetchPipeline, 3000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [fetchPipeline]);
+    let cancelled = false;
+
+    function connect() {
+      if (cancelled) return;
+      const ws = new WebSocket('ws://localhost:8000/ws/pipeline');
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        ws.send('ping');
+      };
+
+      ws.onmessage = (msg) => {
+        try {
+          const data = JSON.parse(msg.data);
+          if (data.type === 'pipeline:init') {
+            setPipelines(data.pipelines ?? []);
+            setStepStats(data.step_stats ?? {});
+            setLoading(false);
+          } else if (data.type === 'pipeline:event') {
+            // Re-fetch full state on each event for consistency
+            fetch(`${API}/map/pipeline?limit=15`)
+              .then(r => r.json())
+              .then(d => {
+                setPipelines(d.pipelines ?? []);
+                setStepStats(d.step_stats ?? {});
+              })
+              .catch(() => {});
+          }
+        } catch { /* ignore parse errors */ }
+      };
+
+      ws.onclose = () => {
+        if (!cancelled) {
+          reconnectRef.current = setTimeout(connect, 3000);
+        }
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (wsRef.current) wsRef.current.close();
+      if (reconnectRef.current) clearTimeout(reconnectRef.current);
+    };
+  }, []);
 
   // Calculate error rate per step
   const getErrorRate = (step: string) => {
@@ -937,6 +968,190 @@ function PipelineView() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// GRAFO VIEW — React Flow network graph
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const NS_ICONS: Record<string, string> = {
+  'chat': '💬', 'codigo': '⚙️', 'imagen': '🎨',
+  'video': '🎬', 'automatizacion': '🤖',
+};
+
+const TIER_NODE_COLORS: Record<string, { bg: string; border: string }> = {
+  HOT: { bg: '#2a0a0a', border: '#ff5050' },
+  WARM: { bg: '#2a1a0a', border: '#ffb900' },
+  COLD: { bg: '#0a1a2a', border: '#4fc3f7' },
+};
+
+function GrafoView({ cells, namespaces }: { cells: MapCell[]; namespaces: NamespaceSummary[] }) {
+  // Build nodes from namespaces — each namespace is a node
+  // Edges connect namespaces that share a prefix (e.g., chat:usuario ↔ chat:conocimiento)
+
+  const prefixGroups: Record<string, NamespaceSummary[]> = {};
+  namespaces.forEach(ns => {
+    const prefix = ns.namespace.split(':')[0];
+    if (!prefixGroups[prefix]) prefixGroups[prefix] = [];
+    prefixGroups[prefix].push(ns);
+  });
+
+  // Layout: prefix groups in a circle, members spaced around group center
+  const prefixes = Object.keys(prefixGroups);
+  const centerX = 300;
+  const centerY = 250;
+  const groupRadius = 200;
+
+  type GNode = {
+    id: string; x: number; y: number; label: string;
+    count: number; icon: string; tiers: Record<string, number>;
+    totalAccesses: number;
+  };
+  type GEdge = { from: string; to: string; };
+
+  const nodes: GNode[] = [];
+  const edges: GEdge[] = [];
+
+  // Central "CORE" node
+  const totalMem = namespaces.reduce((s, n) => s + n.count, 0);
+  nodes.push({
+    id: '__core__', x: centerX, y: centerY,
+    label: 'CORE', count: totalMem, icon: '🧠',
+    tiers: {
+      HOT: cells.filter(c => c.tier === 'HOT').reduce((s, c) => s + c.count, 0),
+      WARM: cells.filter(c => c.tier === 'WARM').reduce((s, c) => s + c.count, 0),
+      COLD: cells.filter(c => c.tier === 'COLD').reduce((s, c) => s + c.count, 0),
+    },
+    totalAccesses: namespaces.reduce((s, n) => s + n.total_accesses, 0),
+  });
+
+  prefixes.forEach((prefix, pi) => {
+    const angle = (pi / prefixes.length) * Math.PI * 2 - Math.PI / 2;
+    const groupCx = centerX + Math.cos(angle) * groupRadius;
+    const groupCy = centerY + Math.sin(angle) * groupRadius;
+    const members = prefixGroups[prefix];
+
+    members.forEach((ns, mi) => {
+      const memberAngle = angle + ((mi - (members.length - 1) / 2) * 0.4);
+      const memberR = members.length > 1 ? 60 : 0;
+      const x = groupCx + (members.length > 1 ? Math.cos(memberAngle) * memberR : 0);
+      const y = groupCy + (members.length > 1 ? Math.sin(memberAngle) * memberR : 0);
+
+      const nsCells = cells.filter(c => c.namespace === ns.namespace);
+      const tiers: Record<string, number> = { HOT: 0, WARM: 0, COLD: 0 };
+      nsCells.forEach(c => { tiers[c.tier] = (tiers[c.tier] || 0) + c.count; });
+
+      nodes.push({
+        id: ns.namespace, x, y,
+        label: ns.namespace.split(':')[1] || ns.namespace,
+        count: ns.count, icon: NS_ICONS[prefix] || '📦',
+        tiers, totalAccesses: ns.total_accesses,
+      });
+
+      // Edge to core
+      edges.push({ from: '__core__', to: ns.namespace });
+    });
+
+    // Edges between members of same group
+    if (members.length > 1) {
+      for (let i = 0; i < members.length; i++) {
+        for (let j = i + 1; j < members.length; j++) {
+          edges.push({ from: members[i].namespace, to: members[j].namespace });
+        }
+      }
+    }
+  });
+
+  const maxCount = Math.max(...nodes.map(n => n.count), 1);
+
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+      <svg width="100%" height="100%" viewBox="0 0 600 500" style={{ position: 'absolute', top: 0, left: 0 }}>
+        {/* Edges */}
+        {edges.map((e, i) => {
+          const from = nodes.find(n => n.id === e.from);
+          const to = nodes.find(n => n.id === e.to);
+          if (!from || !to) return null;
+          const isCore = e.from === '__core__';
+          return (
+            <line key={i}
+              x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+              stroke={isCore ? 'rgba(79,195,247,0.15)' : 'rgba(255,185,0,0.2)'}
+              strokeWidth={isCore ? 1 : 1.5}
+              strokeDasharray={isCore ? '4,4' : 'none'}
+            />
+          );
+        })}
+      </svg>
+
+      {/* Nodes */}
+      {nodes.map(node => {
+        const isCore = node.id === '__core__';
+        const size = isCore ? 80 : 40 + (node.count / maxCount) * 40;
+        const dominant = Object.entries(node.tiers).sort((a, b) => b[1] - a[1])[0];
+        const tierColor = dominant ? TIER_NODE_COLORS[dominant[0]] : TIER_NODE_COLORS.WARM;
+
+        return (
+          <div key={node.id} style={{
+            position: 'absolute',
+            left: node.x - size / 2,
+            top: node.y - size / 2,
+            width: size, height: size,
+            borderRadius: '50%',
+            background: isCore
+              ? 'radial-gradient(circle, #1a1a3e 0%, #0a0a1a 70%)'
+              : tierColor.bg,
+            border: `2px solid ${isCore ? C.accent : tierColor.border}`,
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            cursor: 'default',
+            boxShadow: isCore
+              ? `0 0 30px ${C.accentDim}, inset 0 0 20px ${C.accentDim}`
+              : `0 0 12px ${tierColor.border}33`,
+            transition: 'transform 200ms, box-shadow 200ms',
+            zIndex: isCore ? 10 : 5,
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.15)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
+          title={`${node.id}\n${node.count} memories\n${node.totalAccesses} accesses\nHOT:${node.tiers.HOT} WARM:${node.tiers.WARM} COLD:${node.tiers.COLD}`}
+          >
+            <span style={{ fontSize: isCore ? 20 : 14 }}>{node.icon}</span>
+            {size > 50 && (
+              <span style={{
+                fontSize: 8, fontFamily: 'monospace', color: C.text,
+                textTransform: 'uppercase', letterSpacing: 1,
+                marginTop: 2, textAlign: 'center', lineHeight: '10px',
+              }}>
+                {node.label}
+              </span>
+            )}
+            <span style={{
+              fontSize: isCore ? 12 : 9, fontFamily: 'monospace',
+              color: isCore ? C.accent : tierColor.border, fontWeight: 'bold',
+            }}>
+              {node.count}
+            </span>
+          </div>
+        );
+      })}
+
+      {/* Legend */}
+      <div style={{
+        position: 'absolute', bottom: 12, right: 12,
+        padding: '8px 12px', borderRadius: 8,
+        background: 'rgba(13,17,23,0.9)', border: `1px solid ${C.border}`,
+        fontSize: 9, fontFamily: 'monospace', color: C.textDim,
+        display: 'flex', gap: 12,
+      }}>
+        <span>🔴 HOT</span>
+        <span>🟡 WARM</span>
+        <span>🔵 COLD</span>
+        <span style={{ color: C.text }}>
+          {nodes.length - 1} namespaces · {totalMem} memories
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN EXPORT
 // ═══════════════════════════════════════════════════════════════════════════════
 export function MemoryMapLayout() {
@@ -999,6 +1214,7 @@ export function MemoryMapLayout() {
     { key: 'gauges', icon: '📊', label: 'GAUGES' },
     { key: 'console', icon: '🖥️', label: 'CONSOLE' },
     { key: 'pipeline', icon: '🔬', label: 'PIPELINE' },
+    { key: 'grafo', icon: '🌐', label: 'GRAFO' },
   ];
 
   return (
@@ -1099,6 +1315,8 @@ export function MemoryMapLayout() {
           <GaugesView cells={cells} namespaces={namespaces} />
         ) : view === 'pipeline' ? (
           <PipelineView />
+        ) : view === 'grafo' ? (
+          <GrafoView cells={cells} namespaces={namespaces} />
         ) : (
           <ConsoleView events={events} />
         )}

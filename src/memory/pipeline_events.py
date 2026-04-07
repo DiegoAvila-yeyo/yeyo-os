@@ -86,6 +86,11 @@ class PipelineBuffer:
         self._pipelines: dict[str, list[PipelineEvent]] = {}
         self._pipeline_sources: dict[str, str] = {}
         self._pipeline_deque: deque[str] = deque(maxlen=100)
+        self._listeners: list = []
+
+    def add_listener(self, callback):
+        """Registra un callback que se llama en cada emit(). Para WebSocket broadcast."""
+        self._listeners.append(callback)
 
     def new_pipeline(self, source: str = "chat") -> str:
         """Crea un nuevo pipeline_id para agrupar eventos de un mensaje."""
@@ -120,6 +125,12 @@ class PipelineBuffer:
         if pipeline_id in self._pipelines:
             self._pipelines[pipeline_id].append(event)
         logger.debug(f"[PIPELINE:{pipeline_id}] {step} → {status}: {detail}")
+        # Notify WebSocket listeners
+        for listener in self._listeners:
+            try:
+                listener(event)
+            except Exception:
+                pass
         return event
 
     def get_recent(self, limit: int = 100) -> list[dict]:

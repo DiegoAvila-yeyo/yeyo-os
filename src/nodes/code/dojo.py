@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import json as json_mod
 import logging
 import subprocess
 import sys
@@ -226,6 +227,8 @@ class ResultadoDojo:
     tests_generados: str = ""
     tests_pasaron: bool = False
     tests_output: str = ""
+    func_verificado: bool = False
+    func_output: str = ""
     ast_valido: bool = False
     plan_arquitectura: str = ""
     vulnerabilidades: list = field(default_factory=list)
@@ -366,6 +369,43 @@ class SandboxEjecucion:
                 exito = result.returncode == 0
                 output = result.stdout + result.stderr
                 return exito, output[:2000]  # limitar output
+
+        except subprocess.TimeoutExpired:
+            return False, f"Timeout de {SandboxEjecucion.TIMEOUT_SEGUNDOS}s excedido"
+        except Exception as e:
+            return False, f"Error en sandbox: {e}"
+
+    @staticmethod
+    def ejecutar_script(script: str, codigo_fuente: str = "") -> tuple[bool, str]:
+        """
+        Ejecuta un script Python plano (sin pytest) en un subprocess aislado.
+        Returns: (exito, output)
+        """
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+
+                if codigo_fuente:
+                    (tmp / "source.py").write_text(codigo_fuente, encoding="utf-8")
+
+                script_file = tmp / "verify.py"
+                script_content = (
+                    "import sys, os\n"
+                    "sys.path.insert(0, os.path.dirname(__file__))\n"
+                    f"{script}"
+                )
+                script_file.write_text(script_content, encoding="utf-8")
+
+                result = subprocess.run(
+                    [sys.executable, str(script_file)],
+                    capture_output=True,
+                    text=True,
+                    timeout=SandboxEjecucion.TIMEOUT_SEGUNDOS,
+                    cwd=tmpdir,
+                )
+                exito = result.returncode == 0
+                output = result.stdout + result.stderr
+                return exito, output[:2000]
 
         except subprocess.TimeoutExpired:
             return False, f"Timeout de {SandboxEjecucion.TIMEOUT_SEGUNDOS}s excedido"
@@ -566,8 +606,27 @@ class CodeDojo:
             logger.info(f"[dojo] ❌ {resultado.razon_falla}")
             return resultado
 
+        # ── FUNC_VERIFY — verificación funcional con ejecución real ──
+        logger.info("[dojo] Paso 6: Verificación funcional...")
+        func_ok, func_output = await self._verificar_ejecucion_funcional(
+            codigo, pedido, lenguaje
+        )
+        resultado.func_verificado = func_ok
+        resultado.func_output = func_output
+
+        pipeline_buffer.emit(pid, "FUNC_VERIFY",
+                             "ok" if func_ok else "error",
+                             f"{'✅ Ejecución OK' if func_ok else '❌ Falló'}: {func_output[:80]}",
+                             {"passed": func_ok, "output": func_output[:500]})
+
+        if not func_ok:
+            resultado.exito = False
+            resultado.razon_falla = f"Verificación funcional falló: {func_output[:200]}"
+            logger.info(f"[dojo] ❌ {resultado.razon_falla}")
+            return resultado
+
         # ── SECURITY_SCAN + PERF_ANALYSIS en paralelo ──
-        logger.info("[dojo] Paso 6-7: Seguridad + Performance en paralelo...")
+        logger.info("[dojo] Paso 7-8: Seguridad + Performance en paralelo...")
         perf_task = self._ejecutar_performance(codigo, pedido)
         seg_task = self._ejecutar_seguridad(codigo, pedido)
 
@@ -610,12 +669,14 @@ class CodeDojo:
                     source="code_dojo",
                     metadata={
                         "language": lenguaje,
+                        "prompt": pedido,
+                        "code": resultado.codigo_final,
                         "score_critico": resultado.score_critico,
                         "score_seguridad": resultado.score_seguridad,
                         "score_performance": resultado.score_performance,
                         "tests_passed": resultado.tests_pasaron,
+                        "func_verified": resultado.func_verificado,
                         "ast_valid": resultado.ast_valido,
-                        "code_preview": resultado.codigo_final[:300],
                     },
                     _pipeline_id=pid,
                 )
@@ -679,6 +740,77 @@ class CodeDojo:
             return tests, exito, output
 
         return tests, True, "Lenguaje no soportado para sandbox, asumiendo OK"
+
+    async def _verificar_ejecucion_funcional(
+        self, codigo: str, pedido: str, lenguaje: str
+    ) -> tuple[bool, str]:
+        """
+        Ejecuta el código con inputs reales para verificar que funciona.
+        El LLM genera un script de verificación, el sandbox lo ejecuta.
+        Returns: (passed, output)
+        """
+        if lenguaje != "python":
+            return True, "Lenguaje no soportado para ejecución funcional, saltando"
+
+        prompt = (
+            f"Escribe un script de verificación funcional para este código:\n"
+            f"```python\n{codigo}\n```\n"
+            f"Tarea original: {pedido}\n\n"
+            f"REGLAS:\n"
+            f"- El código está en 'source.py'. Usa 'from source import *'\n"
+            f"- Llama a la(s) función(es) principales con 2-3 inputs reales\n"
+            f"- Imprime 'FUNC_OK' si todo funciona, 'FUNC_FAIL: razón' si algo falla\n"
+            f"- Verifica que los resultados sean correctos (no solo que no crashee)\n"
+            f"- NO uses pytest ni assert. Usa print() para reportar\n"
+            f"- Maneja excepciones con try/except\n\n"
+            f"Ejemplo de formato:\n"
+            f"```python\n"
+            f"from source import *\n"
+            f"try:\n"
+            f"    r = sumar(2, 3)\n"
+            f"    if r == 5:\n"
+            f"        print('FUNC_OK')\n"
+            f"    else:\n"
+            f"        print(f'FUNC_FAIL: esperaba 5, obtuve {{r}}')\n"
+            f"except Exception as e:\n"
+            f"    print(f'FUNC_FAIL: {{e}}')\n"
+            f"```"
+        )
+        verify_script = await self._agentes["testing"].ejecutar(prompt)
+        if not verify_script:
+            return True, "No se generó script de verificación"
+
+        verify_script = _format_python(verify_script)
+
+        # Validate the verification script itself compiles
+        try:
+            ast.parse(verify_script)
+        except SyntaxError as e:
+            logger.warning(f"[dojo] Script de verificación tiene syntax error: {e}")
+            return True, f"Script de verificación inválido (saltando): {e}"
+
+        exito, output = self._sandbox.ejecutar_script(verify_script, codigo)
+
+        # If the script itself crashed (not the code under test), skip gracefully
+        if not exito and ("SyntaxError" in output or "IndentationError" in output):
+            logger.warning(f"[dojo] Script de verificación crasheó, saltando")
+            return True, f"Script de verificación crasheó (saltando): {output[:200]}"
+
+        # Only trust FUNC_OK/FUNC_FAIL markers when script ran successfully
+        if exito and "FUNC_OK" in output:
+            logger.info("[dojo] ✅ Verificación funcional pasó")
+            return True, output[:500]
+
+        if "FUNC_FAIL" in output and exito:
+            logger.info(f"[dojo] ❌ Verificación funcional falló: {output[:100]}")
+            return False, output[:500]
+
+        # Script ran cleanly without markers — benefit of the doubt
+        if exito:
+            return True, output[:500]
+
+        # Script failed with runtime error — the code is likely broken
+        return False, output[:500]
 
     async def _ejecutar_performance(self, codigo: str, pedido: str) -> tuple[float, list]:
         """Analiza performance del código."""

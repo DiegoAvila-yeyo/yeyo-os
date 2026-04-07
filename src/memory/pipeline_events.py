@@ -34,6 +34,7 @@ PIPELINE_DEFS: dict[str, list[dict]] = {
         {"key": "CRITIC_EVAL",    "icon": "🔍", "label": "CRÍTICO"},
         {"key": "AST_PARSE",      "icon": "🌳", "label": "AST"},
         {"key": "TESTS_RUN",      "icon": "🧪", "label": "TESTS"},
+        {"key": "FUNC_VERIFY",   "icon": "🎯", "label": "EJECUCIÓN"},
         {"key": "SECURITY_SCAN",  "icon": "🛡️", "label": "SEGURIDAD"},
         {"key": "PERF_ANALYSIS",  "icon": "⚡", "label": "PERFORMANCE"},
         {"key": "EMBEDDING",      "icon": "🧬", "label": "EMBEDDING"},

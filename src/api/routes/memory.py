@@ -756,3 +756,72 @@ async def memory_pipeline_events(
         "recent_events": pipeline_buffer.get_recent(limit * 10),
         "pipeline_defs": PIPELINE_DEFS,
     }
+
+
+# ─── Training Corpus Export ───────────────────────────────────────────────────
+
+@router.get("/export/training-corpus")
+async def export_training_corpus(
+    namespace: str = Query("codigo:usuario", description="Namespace a exportar"),
+    min_score: float = Query(8.0, ge=0, le=10, description="Score mínimo del crítico"),
+    format: str = Query("jsonl", description="Formato: jsonl o json"),
+    flash_memory=Depends(get_flash_memory),
+):
+    """
+    Exporta código aprobado como JSONL para fine-tuning.
+    Filtra por score_critico >= min_score, tests pasados, AST válido.
+    """
+    import json
+    from fastapi.responses import PlainTextResponse
+
+    try:
+        async with flash_memory.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, content, metadata, source, created_at
+                FROM flash_memories
+                WHERE namespace = $1
+                  AND type = 'skill'
+                  AND source = 'code_dojo'
+                  AND (metadata->>'score_critico')::float >= $2
+                  AND metadata->>'tests_passed' = 'true'
+                  AND metadata->>'ast_valid' = 'true'
+                ORDER BY created_at DESC
+                """,
+                namespace, min_score,
+            )
+
+        corpus = []
+        for row in rows:
+            meta = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else (row["metadata"] or {})
+            item = {
+                "id": str(row["id"]),
+                "prompt": meta.get("prompt", ""),
+                "code": meta.get("code", ""),
+                "language": meta.get("language", "python"),
+                "scores": {
+                    "critic": float(meta.get("score_critico", 0)),
+                    "security": float(meta.get("score_seguridad", 0)),
+                    "performance": float(meta.get("score_performance", 0)),
+                },
+                "tests_passed": meta.get("tests_passed", False),
+                "func_verified": meta.get("func_verified", False),
+                "ast_valid": meta.get("ast_valid", False),
+                "created_at": str(row["created_at"]),
+            }
+            corpus.append(item)
+
+        if format == "json":
+            return {"count": len(corpus), "corpus": corpus}
+
+        # Default: JSONL
+        lines = [json.dumps(item, ensure_ascii=False) for item in corpus]
+        return PlainTextResponse(
+            "\n".join(lines),
+            media_type="application/x-ndjson",
+            headers={"Content-Disposition": "attachment; filename=training_corpus.jsonl"},
+        )
+
+    except Exception as e:
+        logger.error(f"Error exportando corpus: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

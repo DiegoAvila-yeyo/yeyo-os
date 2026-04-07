@@ -241,6 +241,7 @@ function HubPrincipal() {
 
       const astIcon = data?.ast_valido ? '✅' : '❌';
       const testsIcon = data?.tests_pasaron ? '✅' : '❌';
+      const funcIcon = data?.func_verificado ? '✅' : '❌';
       const estado = aprobado ? '✅ APROBADO' : '❌ RECHAZADO';
 
       content += `${estado}`;
@@ -249,6 +250,7 @@ function HubPrincipal() {
       content += ` | Performance: ${(data?.score_performance ?? 0).toFixed(1)}/10`;
       content += ` | AST: ${astIcon}`;
       content += ` | Tests: ${testsIcon}`;
+      content += ` | Func: ${funcIcon}`;
 
       if (!aprobado && data?.razon_falla) {
         content += `\n\n⚠️ **Razón**: ${data.razon_falla}`;

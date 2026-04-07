@@ -206,42 +206,54 @@ function HubPrincipal() {
   const handleCodeChatSend = useCallback(async (mensaje: string) => {
     const userMsg = { id: `code-${Date.now()}`, role: 'user' as const, content: mensaje };
     const loadingId = `code-loading-${Date.now()}`;
-    const loadingMsg = { id: loadingId, role: 'assistant' as const, content: '⏳ Generando código...' };
+    const loadingMsg = { id: loadingId, role: 'assistant' as const, content: '🤔 Analizando...' };
     setCodeMessages(prev => [...prev, userMsg, loadingMsg]);
     try {
-      const res = await fetch('http://localhost:8000/api/v1/code/generate', {
+      // Build history for planner context
+      const recentHistory = codeMessages.slice(-6).map(m => ({
+        role: m.role, content: m.content,
+      }));
+
+      const res = await fetch('http://localhost:8000/api/v1/code/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: mensaje, language: 'python' }),
+        body: JSON.stringify({ message: mensaje, history: recentHistory }),
       });
       const data = await res.json();
-      const codigo = data?.codigo || '';
-      const aprobado = data?.aprobado ?? false;
 
-      // Build detailed response
-      let content = '';
-      if (codigo) {
-        content += `\`\`\`python\n${codigo}\n\`\`\`\n`;
+      // Planner needs more info — show questions
+      if (data?.type === 'question') {
+        setCodeMessages(prev => prev.map(m =>
+          m.id === loadingId ? { ...m, content: data.message } : m
+        ));
+        return;
       }
 
-      // Verification badges
-      const ast = data?.ast_valido ? '✅' : '❌';
-      const tests = data?.tests_pasaron ? '✅' : '❌';
+      // Dojo generated code — show results
+      const codigo = data?.codigo || '';
+      const aprobado = data?.aprobado ?? false;
+      const lang = data?.lenguaje || 'python';
+
+      let content = '';
+      if (codigo) {
+        content += `\`\`\`${lang}\n${codigo}\n\`\`\`\n`;
+      }
+
+      const astIcon = data?.ast_valido ? '✅' : '❌';
+      const testsIcon = data?.tests_pasaron ? '✅' : '❌';
       const estado = aprobado ? '✅ APROBADO' : '❌ RECHAZADO';
 
       content += `${estado}`;
       content += ` | Crítico: ${(data?.score ?? 0).toFixed(1)}/10`;
       content += ` | Seguridad: ${(data?.score_seguridad ?? 0).toFixed(1)}/10`;
       content += ` | Performance: ${(data?.score_performance ?? 0).toFixed(1)}/10`;
-      content += ` | AST: ${ast}`;
-      content += ` | Tests: ${tests}`;
+      content += ` | AST: ${astIcon}`;
+      content += ` | Tests: ${testsIcon}`;
 
-      // Show failure reason if rejected
       if (!aprobado && data?.razon_falla) {
         content += `\n\n⚠️ **Razón**: ${data.razon_falla}`;
       }
 
-      // Show test output if tests failed
       if (!data?.tests_pasaron && data?.tests_output) {
         content += `\n\n📋 **Test output**:\n\`\`\`\n${data.tests_output}\n\`\`\``;
       }
@@ -258,7 +270,7 @@ function HubPrincipal() {
         m.id === loadingId ? { ...m, content: `❌ Error: ${err}` } : m
       ));
     }
-  }, []);
+  }, [codeMessages]);
 
   const handleVideoChatSend = useCallback(async (mensaje: string) => {
     const userMsg = { id: `video-${Date.now()}`, role: 'user' as const, content: mensaje };

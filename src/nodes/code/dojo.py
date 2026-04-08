@@ -434,6 +434,7 @@ class CodeDojo:
 
     MAX_INTENTOS_BACKEND = 3
     MAX_INTENTOS_TESTS = 2
+    MAX_INTENTOS_AST = 2
 
     def __init__(self, ia: IAProvider, memory_service=None):
         self._ia = ia
@@ -564,18 +565,43 @@ class CodeDojo:
 
         resultado.codigo_final = codigo
 
-        # ── AST_PARSE — Verificación real de que compila ──
-        ast_ok, ast_error = self._verificar_ast(codigo, lenguaje)
-        resultado.ast_valido = ast_ok
-        pipeline_buffer.emit(pid, "AST_PARSE",
-                             "ok" if ast_ok else "error",
-                             "Sintaxis válida" if ast_ok else f"Error: {ast_error[:80]}",
-                             {"valid": ast_ok, "error": ast_error})
+        # ── AST_PARSE — Verificación real de que compila (con retry) ──
+        for ast_intento in range(self.MAX_INTENTOS_AST):
+            ast_ok, ast_error = self._verificar_ast(codigo, lenguaje)
+            resultado.ast_valido = ast_ok
+            pipeline_buffer.emit(pid, "AST_PARSE",
+                                 "ok" if ast_ok else "error",
+                                 "Sintaxis válida" if ast_ok else f"Error: {ast_error[:80]}",
+                                 {"valid": ast_ok, "error": ast_error,
+                                  "attempt": ast_intento + 1})
+
+            if ast_ok:
+                break
+
+            # AST failed — retry by asking LLM to fix the syntax error
+            if ast_intento < self.MAX_INTENTOS_AST - 1:
+                logger.info(f"[dojo] AST falló (intento {ast_intento + 1}), "
+                            f"regenerando con feedback de error: {ast_error}")
+                fix_prompt = (
+                    f"TAREA: {pedido}\nLenguaje: {lenguaje}\n\n"
+                    f"Tu código tiene un ERROR DE SINTAXIS que debes corregir:\n"
+                    f"Error: {ast_error}\n\n"
+                    f"CÓDIGO CON ERROR:\n```{lenguaje}\n{codigo}\n```\n\n"
+                    f"INSTRUCCIONES:\n"
+                    f"- Corrige SOLO el error de sintaxis/indentación indicado\n"
+                    f"- Usa EXACTAMENTE 4 espacios por cada nivel de indentación\n"
+                    f"- Después de if/elif/else/for/while/def/class: el bloque DEBE estar indentado\n"
+                    f"- Retorna SOLO el código corregido completo, sin explicaciones"
+                )
+                codigo = await self._agentes[agente_key].ejecutar(fix_prompt)
+                if lenguaje == "python":
+                    codigo = _format_python(codigo)
+                resultado.codigo_final = codigo
 
         if not ast_ok:
             resultado.exito = False
             resultado.razon_falla = f"AST inválido: {ast_error}"
-            logger.info(f"[dojo] ❌ AST falló: {ast_error}")
+            logger.info(f"[dojo] ❌ AST falló tras {self.MAX_INTENTOS_AST} intentos: {ast_error}")
             return resultado
 
         # ── TESTS_RUN — Tests como gate OBLIGATORIO ──

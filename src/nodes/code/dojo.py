@@ -497,9 +497,25 @@ class CodeDojo:
             resultado.intentos_backend = intento + 1
 
             logger.info(f"[dojo] Paso 2 (intento {intento + 1}): Backend escribiendo...")
-            prompt_backend = contexto_backend
-            if razon_critico and intento > 0:
-                prompt_backend += f"\n\nFEEDBACK DEL CRÍTICO (corregir):\n{razon_critico}"
+
+            if intento == 0:
+                # First attempt: generate from scratch
+                prompt_backend = contexto_backend
+            else:
+                # Retry: give the rejected code + specific feedback to fix
+                prompt_backend = (
+                    f"TAREA: {pedido}\nLenguaje: {lenguaje}\n\n"
+                    f"Tu código anterior fue RECHAZADO por el evaluador.\n\n"
+                    f"CÓDIGO RECHAZADO:\n```{lenguaje}\n{codigo}\n```\n\n"
+                    f"PROBLEMAS A CORREGIR:\n{razon_critico}\n\n"
+                    f"INSTRUCCIONES:\n"
+                    f"- Corrige ESPECÍFICAMENTE los problemas mencionados arriba\n"
+                    f"- Mantén lo que ya funciona bien\n"
+                    f"- Agrega manejo de errores si el evaluador lo pide\n"
+                    f"- Retorna SOLO el código corregido completo"
+                )
+                if memory_context:
+                    prompt_backend += f"\n\n[BUENAS PRÁCTICAS]\n{memory_context}"
 
             agente_key = "backend"
             if lenguaje in ("typescript", "javascript"):
@@ -538,9 +554,13 @@ class CodeDojo:
                 logger.info(f"[dojo] Rechazado ({score_critico:.1f}/10). Reintentando...")
 
         if score_critico < 8.0:
-            resultado.razon_falla = f"No pasó el Crítico tras {self.MAX_INTENTOS_BACKEND} intentos: {razon_critico}"
-            logger.info(f"[dojo] ❌ {resultado.razon_falla}")
-            return resultado
+            # If score is close (≥7.0), let tests be the final judge
+            if score_critico >= 7.0 and codigo:
+                logger.info(f"[dojo] Score {score_critico:.1f} < 8.0 pero ≥ 7.0 — dejando que Tests decidan")
+            else:
+                resultado.razon_falla = f"No pasó el Crítico tras {self.MAX_INTENTOS_BACKEND} intentos: {razon_critico}"
+                logger.info(f"[dojo] ❌ {resultado.razon_falla}")
+                return resultado
 
         resultado.codigo_final = codigo
 

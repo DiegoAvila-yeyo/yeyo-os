@@ -18,7 +18,8 @@ export type NodeType =
   | 'files'
   | 'browser'
   | 'config'
-  | 'memory';
+  | 'memory'
+  | 'network';
 
 // ─── Flash Memory Types ────────────────────────────────────────────────────────
 

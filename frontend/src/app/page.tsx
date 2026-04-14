@@ -37,6 +37,7 @@ import { CodeNodeLayout } from '@/components/nodes/CodeNodeLayout';
 import { AutomationNodeLayout } from '@/components/nodes/AutomationNodeLayout';
 import { MemoryNodeLayout } from '@/components/nodes/MemoryNodeLayout';
 import { MemoryMapLayout } from '@/components/nodes/MemoryMapLayout';
+import { YeyoNetNodeLayout } from '@/components/nodes/YeyoNetNodeLayout';
 import ChatPanel from '@/components/chat/ChatPanel';
 
 // ─── Nodos disponibles en el Hub ───────────────────────────────────────────────
@@ -48,9 +49,10 @@ const NODOS_HUB: NodoLibreInfo[] = [
   { id: 'chat',      label: 'Chat',       tipo: 'chat',       icono: '💬',  colorAcento: '#ff4444' },
   { id: 'memoria',   label: 'Memoria',    tipo: 'memory',     icono: '🧠',  colorAcento: '#00bcd4' },
   { id: 'mapa',      label: 'MemoryMap',  tipo: 'memory',     icono: '🗺️',  colorAcento: '#9c27b0' },
+  { id: 'yeyonet',   label: 'YeyoNet',    tipo: 'network',    icono: '🌐',  colorAcento: '#00e676' },
 ];
 
-type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | 'mapa' | null;
+type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | 'mapa' | 'yeyonet' | null;
 
 // ─── Workspace Router ──────────────────────────────────────────────────────────
 function WorkspaceRouter({
@@ -115,6 +117,7 @@ function WorkspaceRouter({
     case 'automacion': return wrapper(<AutomationNodeLayout />);
     case 'memoria':    return wrapper(<MemoryNodeLayout />);
     case 'mapa':       return wrapper(<MemoryMapLayout />);
+    case 'yeyonet':    return wrapper(<YeyoNetNodeLayout />);
     default:           return null;
   }
 }
@@ -138,6 +141,7 @@ function HubPrincipal() {
     automacion: { label: 'Automatizar', icono: '⚡' },
     memoria:    { label: 'Memoria',     icono: '🧠' },
     mapa:       { label: 'MemoryMap',   icono: '🗺️' },
+    yeyonet:    { label: 'YeyoNet',     icono: '🌐' },
   };
 
   const abrirNodo = useCallback((nodeId: string) => {
@@ -146,7 +150,7 @@ function HubPrincipal() {
       useChatStore.getState().setPanelOpen(true);
       return;
     }
-    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria', 'mapa'].includes(nodeId)) return;
+    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria', 'mapa', 'yeyonet'].includes(nodeId)) return;
     const ws = nodeId as WorkspaceId;
     setActiveWorkspace(ws);
     const info = WORKSPACE_LABELS[nodeId];

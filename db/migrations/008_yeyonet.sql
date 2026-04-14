@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS yeyonet_jobs (
 CREATE TABLE IF NOT EXISTS yeyonet_job_results (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     job_id UUID NOT NULL REFERENCES yeyonet_jobs(id),
-    node_id UUID NOT NULL REFERENCES yeyonet_nodes(id),
+    node_id UUID REFERENCES yeyonet_nodes(id),
 
     -- Chunk info (para video render distribuido)
     chunk_index INTEGER,

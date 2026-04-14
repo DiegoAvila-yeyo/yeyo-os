@@ -242,3 +242,102 @@ async def get_identity(
         "role": node.role,
         "status": node.status,
     }
+
+
+# ─── Job Orchestrator dependency ─────────────────────────────
+
+async def get_job_orchestrator():
+    raise HTTPException(503, "JobOrchestrator not initialized")
+
+
+# ─── Jobs ────────────────────────────────────────────────────
+
+@router.post("/jobs")
+async def create_job(
+    request: JobCreateRequest,
+    orchestrator=Depends(get_job_orchestrator),
+    identity=Depends(get_node_identity),
+):
+    """Crea un nuevo job en la cola."""
+    job = await orchestrator.create_job(
+        job_type=request.type,
+        payload=request.payload,
+        requested_by=identity.node_id,
+        priority=request.priority,
+        timeout_seconds=request.timeout_seconds,
+    )
+    return {"job_id": job.id, "type": job.type.value, "status": job.status.value}
+
+
+@router.post("/jobs/distributed")
+async def create_distributed_job(
+    request: JobCreateRequest,
+    orchestrator=Depends(get_job_orchestrator),
+    identity=Depends(get_node_identity),
+):
+    """Crea un job distribuido con múltiples items (para render farm)."""
+    items = request.payload.get("items", [])
+    if not items:
+        raise HTTPException(400, "payload.items is required for distributed jobs")
+
+    result = await orchestrator.create_distributed_job(
+        job_type=request.type,
+        items=items,
+        requested_by=identity.node_id,
+        priority=request.priority,
+    )
+    return result
+
+
+@router.get("/jobs")
+async def list_jobs(
+    status: str | None = Query(None),
+    type: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    orchestrator=Depends(get_job_orchestrator),
+):
+    """Lista jobs con filtros opcionales."""
+    jobs = await orchestrator.list_jobs(status=status, job_type=type, limit=limit)
+    return jobs
+
+
+@router.get("/jobs/stats")
+async def job_stats(
+    orchestrator=Depends(get_job_orchestrator),
+):
+    """Estadísticas de la cola de jobs."""
+    return await orchestrator.get_queue_stats()
+
+
+@router.get("/jobs/{job_id}")
+async def get_job(
+    job_id: str,
+    orchestrator=Depends(get_job_orchestrator),
+):
+    """Obtiene estado y resultado de un job."""
+    job = await orchestrator.get_job(job_id)
+    if not job:
+        raise HTTPException(404, "Job no encontrado")
+    return job
+
+
+@router.get("/jobs/{job_id}/results")
+async def get_job_results(
+    job_id: str,
+    orchestrator=Depends(get_job_orchestrator),
+):
+    """Obtiene sub-resultados de un job distribuido."""
+    results = await orchestrator.get_job_results(job_id)
+    return results
+
+
+@router.delete("/jobs/{job_id}")
+async def cancel_job(
+    job_id: str,
+    orchestrator=Depends(get_job_orchestrator),
+):
+    """Cancela un job si aún no completó."""
+    cancelled = await orchestrator.cancel_job(job_id)
+    if not cancelled:
+        raise HTTPException(400, "No se pudo cancelar (ya completado o no existe)")
+    return {"status": "cancelled"}

@@ -41,7 +41,7 @@ from src.api.routes.media import router as media_router
 from src.api.routes.nodes import router as nodes_router
 from src.api.routes.code import router as code_router, set_ia_provider as set_code_ia, set_code_ia_provider, set_memory_service as set_code_memory
 from src.api.routes.video import router as video_router, get_ia_provider as video_get_ia, get_flash_memory as video_get_memory, set_video_memory_service
-from src.api.routes.yeyonet import router as yeyonet_router, get_invite_manager as yeyonet_get_invite, get_satellite_manager as yeyonet_get_sat, get_node_identity as yeyonet_get_identity
+from src.api.routes.yeyonet import router as yeyonet_router, get_invite_manager as yeyonet_get_invite, get_satellite_manager as yeyonet_get_sat, get_node_identity as yeyonet_get_identity, get_job_orchestrator as yeyonet_get_orchestrator
 
 logger = logging.getLogger("yeyoos.api")
 
@@ -62,6 +62,7 @@ _node_identity = None  # YeyoNet NodeIdentity
 _invite_manager = None  # YeyoNet InviteManager
 _satellite_manager = None  # YeyoNet SatelliteManager
 _yeyonet_relay = None  # YeyoNet Relay Server
+_job_orchestrator = None  # YeyoNet JobOrchestrator
 
 
 @asynccontextmanager
@@ -72,6 +73,7 @@ async def lifespan(app: FastAPI):
     global _memory_cache, _tier_manager, _background_manager
     global _node_identity, _invite_manager, _satellite_manager
     global _yeyonet_relay
+    global _job_orchestrator
 
     _start_time = time.time()
     config = get_config()
@@ -184,7 +186,17 @@ async def lifespan(app: FastAPI):
             _yeyonet_relay = YeyoNetRelay(_satellite_manager, _node_identity.node_id)
             await _yeyonet_relay.start()
 
-            logger.info(f"  🌐 YeyoNet: ✅ (node={_node_identity.node_id[:8]}..., relay=on)")
+            # Iniciar Job Orchestrator
+            from src.yeyonet.job_orchestrator import JobOrchestrator
+            _job_orchestrator = JobOrchestrator(pool, _yeyonet_relay)
+            await _job_orchestrator.start()
+
+            # Wire relay handlers for job messages
+            from src.yeyonet.protocol import MessageType as MT
+            _yeyonet_relay.on_message(MT.JOB_PROGRESS, _job_orchestrator.handle_job_progress)
+            _yeyonet_relay.on_message(MT.JOB_RESULT, _job_orchestrator.handle_job_result)
+
+            logger.info(f"  🌐 YeyoNet: ✅ (node={_node_identity.node_id[:8]}..., relay+jobs=on)")
     except Exception as e:
         logger.warning(f"  🌐 YeyoNet: ❌ ({e})")
 
@@ -209,6 +221,8 @@ async def lifespan(app: FastAPI):
     logger.info("🔴 YeyoOS Backend cerrando...")
     if _yeyonet_relay:
         await _yeyonet_relay.stop()
+    if _job_orchestrator:
+        await _job_orchestrator.stop()
     if _background_manager:
         await _background_manager.stop()
     if _memory_cache:
@@ -299,6 +313,12 @@ def _wire_dependencies():
         app.dependency_overrides[yeyonet_get_invite] = _real_invite_manager
         app.dependency_overrides[yeyonet_get_sat] = _real_satellite_manager
         app.dependency_overrides[yeyonet_get_identity] = _real_node_identity
+
+    if _job_orchestrator:
+        async def _real_job_orchestrator():
+            return _job_orchestrator
+
+        app.dependency_overrides[yeyonet_get_orchestrator] = _real_job_orchestrator
 
 
 app = FastAPI(

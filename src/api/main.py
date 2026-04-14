@@ -61,6 +61,7 @@ _background_manager: BackgroundTaskManager | None = None
 _node_identity = None  # YeyoNet NodeIdentity
 _invite_manager = None  # YeyoNet InviteManager
 _satellite_manager = None  # YeyoNet SatelliteManager
+_yeyonet_relay = None  # YeyoNet Relay Server
 
 
 @asynccontextmanager
@@ -70,6 +71,7 @@ async def lifespan(app: FastAPI):
     global _feedback_service, _chat_service, _embedding_service, _association_engine
     global _memory_cache, _tier_manager, _background_manager
     global _node_identity, _invite_manager, _satellite_manager
+    global _yeyonet_relay
 
     _start_time = time.time()
     config = get_config()
@@ -176,7 +178,13 @@ async def lifespan(app: FastAPI):
             await _node_identity.initialize(name="Central")
             _invite_manager = InviteManager(pool)
             _satellite_manager = SatelliteManager(pool)
-            logger.info(f"  🌐 YeyoNet: ✅ (node={_node_identity.node_id[:8]}...)")
+
+            # Iniciar Relay Server
+            from src.yeyonet.relay import YeyoNetRelay
+            _yeyonet_relay = YeyoNetRelay(_satellite_manager, _node_identity.node_id)
+            await _yeyonet_relay.start()
+
+            logger.info(f"  🌐 YeyoNet: ✅ (node={_node_identity.node_id[:8]}..., relay=on)")
     except Exception as e:
         logger.warning(f"  🌐 YeyoNet: ❌ ({e})")
 
@@ -199,6 +207,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("🔴 YeyoOS Backend cerrando...")
+    if _yeyonet_relay:
+        await _yeyonet_relay.stop()
     if _background_manager:
         await _background_manager.stop()
     if _memory_cache:
@@ -477,3 +487,12 @@ async def ws_pipeline(websocket: WebSocket):
         if websocket in _pipeline_ws_clients:
             _pipeline_ws_clients.remove(websocket)
 
+
+@app.websocket("/ws/yeyonet")
+async def ws_yeyonet(websocket: WebSocket):
+    """WebSocket para la red YeyoNet — satélites se conectan aquí."""
+    if _yeyonet_relay:
+        await _yeyonet_relay.handle_connection(websocket)
+    else:
+        await websocket.accept()
+        await websocket.close(code=1013, reason="YeyoNet relay not initialized")

@@ -250,6 +250,10 @@ async def get_job_orchestrator():
     raise HTTPException(503, "JobOrchestrator not initialized")
 
 
+async def get_sync_manager():
+    raise HTTPException(503, "SyncManager not initialized")
+
+
 # ─── Jobs ────────────────────────────────────────────────────
 
 @router.post("/jobs")
@@ -341,3 +345,46 @@ async def cancel_job(
     if not cancelled:
         raise HTTPException(400, "No se pudo cancelar (ya completado o no existe)")
     return {"status": "cancelled"}
+
+
+# ─── Memory Sync ─────────────────────────────────────────────
+
+@router.post("/sync/trigger/{node_id}")
+async def trigger_sync(
+    node_id: str,
+    sync_mgr=Depends(get_sync_manager),
+    sat_mgr=Depends(get_satellite_manager),
+):
+    """Fuerza un push de memorias hacia un satélite específico."""
+    sat = await sat_mgr.get_satellite(node_id)
+    if not sat:
+        raise HTTPException(404, "Satélite no encontrado")
+    pushed = await sync_mgr.push_memories_to_satellite(node_id)
+    return {"status": "ok", "memories_pushed": pushed}
+
+
+@router.get("/sync/stats")
+async def sync_stats(
+    sync_mgr=Depends(get_sync_manager),
+):
+    """Estadísticas del sistema de sincronización."""
+    stats = await sync_mgr.get_sync_stats()
+    return stats
+
+
+@router.post("/sync/training-corpus/{node_id}")
+async def share_training_corpus(
+    node_id: str,
+    language: Optional[str] = Query(None),
+    min_score: float = Query(7.0),
+    sync_mgr=Depends(get_sync_manager),
+    sat_mgr=Depends(get_satellite_manager),
+):
+    """Comparte el corpus de entrenamiento con un satélite."""
+    sat = await sat_mgr.get_satellite(node_id)
+    if not sat:
+        raise HTTPException(404, "Satélite no encontrado")
+    shared = await sync_mgr.share_training_corpus(
+        node_id, language=language, min_score=min_score
+    )
+    return {"status": "ok", "entries_shared": shared}

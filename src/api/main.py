@@ -41,6 +41,7 @@ from src.api.routes.media import router as media_router
 from src.api.routes.nodes import router as nodes_router
 from src.api.routes.code import router as code_router, set_ia_provider as set_code_ia, set_code_ia_provider, set_memory_service as set_code_memory
 from src.api.routes.video import router as video_router, get_ia_provider as video_get_ia, get_flash_memory as video_get_memory, set_video_memory_service
+from src.api.routes.yeyonet import router as yeyonet_router, get_invite_manager as yeyonet_get_invite, get_satellite_manager as yeyonet_get_sat, get_node_identity as yeyonet_get_identity
 
 logger = logging.getLogger("yeyoos.api")
 
@@ -57,6 +58,9 @@ _association_engine = None
 _memory_cache: MemoryCache | None = None
 _tier_manager: TierManager | None = None
 _background_manager: BackgroundTaskManager | None = None
+_node_identity = None  # YeyoNet NodeIdentity
+_invite_manager = None  # YeyoNet InviteManager
+_satellite_manager = None  # YeyoNet SatelliteManager
 
 
 @asynccontextmanager
@@ -65,6 +69,7 @@ async def lifespan(app: FastAPI):
     global _start_time, _ia_provider, _flash_memory, _conv_manager
     global _feedback_service, _chat_service, _embedding_service, _association_engine
     global _memory_cache, _tier_manager, _background_manager
+    global _node_identity, _invite_manager, _satellite_manager
 
     _start_time = time.time()
     config = get_config()
@@ -160,6 +165,21 @@ async def lifespan(app: FastAPI):
     # 6. Paquetes
     init_package_services()
 
+    # 7. YeyoNet — Red distribuida
+    try:
+        from src.yeyonet.identity import NodeIdentity
+        from src.yeyonet.invite_manager import InviteManager
+        from src.yeyonet.satellite_manager import SatelliteManager
+
+        if pool:
+            _node_identity = NodeIdentity(pool)
+            await _node_identity.initialize(name="Central")
+            _invite_manager = InviteManager(pool)
+            _satellite_manager = SatelliteManager(pool)
+            logger.info(f"  🌐 YeyoNet: ✅ (node={_node_identity.node_id[:8]}...)")
+    except Exception as e:
+        logger.warning(f"  🌐 YeyoNet: ❌ ({e})")
+
     # Inyectar dependencias en los routers
     _wire_dependencies()
 
@@ -254,6 +274,21 @@ def _wire_dependencies():
 
     app.dependency_overrides[video_get_ia] = _real_video_ia
     app.dependency_overrides[video_get_memory] = _real_video_memory
+
+    # YeyoNet dependencies
+    if _node_identity and _invite_manager and _satellite_manager:
+        async def _real_invite_manager():
+            return _invite_manager
+
+        async def _real_satellite_manager():
+            return _satellite_manager
+
+        async def _real_node_identity():
+            return _node_identity
+
+        app.dependency_overrides[yeyonet_get_invite] = _real_invite_manager
+        app.dependency_overrides[yeyonet_get_sat] = _real_satellite_manager
+        app.dependency_overrides[yeyonet_get_identity] = _real_node_identity
 
 
 app = FastAPI(
@@ -360,6 +395,7 @@ app.include_router(media_router)
 app.include_router(nodes_router)
 app.include_router(code_router)
 app.include_router(video_router)
+app.include_router(yeyonet_router)
 
 
 # ========== WebSocket ==========

@@ -19,10 +19,10 @@ logger = logging.getLogger("yeyonet.orchestrator")
 
 # Capacidades requeridas por tipo de job
 JOB_REQUIREMENTS: dict[str, dict] = {
-    "image_generate": {"needs_gpu": True, "min_ram_gb": 4.0},
+    "image_generate": {"needs_gpu": True, "min_ram_gb": 2.0},
     "video_render": {"needs_gpu": False, "min_ram_gb": 2.0},
-    "text_inference": {"needs_gpu": False, "min_ram_gb": 4.0, "needs_ollama": True},
-    "training_step": {"needs_gpu": True, "min_ram_gb": 8.0},
+    "text_inference": {"needs_gpu": False, "min_ram_gb": 2.0, "needs_ollama": True},
+    "training_step": {"needs_gpu": True, "min_ram_gb": 6.0},
     "memory_sync": {"needs_gpu": False, "min_ram_gb": 0.5},
     "custom": {"needs_gpu": False, "min_ram_gb": 1.0},
 }

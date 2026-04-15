@@ -251,14 +251,32 @@ async def lifespan(app: FastAPI):
         sat_config = load_config()
         if sat_config:
             from src.yeyonet.client import YeyoNetClient
+            from src.yeyonet.worker import WorkerExecutor
+            from src.yeyonet.resource_monitor import ResourceMonitor
+            from src.yeyonet.protocol import MessageType as MT_sat
+
             _yeyonet_client = YeyoNetClient(
                 central_ws_url=sat_config["central_ws_url"],
                 node_id=sat_config["node_id"],
                 auth_token=sat_config["auth_token"],
             )
+
+            # Wire job executor so satellite can process jobs from Central
+            _worker = WorkerExecutor(sat_config["node_id"], _yeyonet_client.send)
+            _yeyonet_client.on(MT_sat.JOB_ASSIGN, _worker.handle_job_assign)
+            _yeyonet_client.on(MT_sat.JOB_CANCEL, _worker.handle_job_cancel)
+
+            # Wire resource monitor so Central sees our CPU/GPU/RAM
+            _res_monitor = ResourceMonitor()
+            _res_monitor.set_callback(_yeyonet_client.send_resources)
+            await _res_monitor.start()
+
             await _yeyonet_client.start()
             _yeyonet_client_holder["client"] = _yeyonet_client
+            _yeyonet_client_holder["worker"] = _worker
+            _yeyonet_client_holder["resource_monitor"] = _res_monitor
             logger.info(f"  🛰 YeyoNet Satellite: ✅ (connected to {sat_config['central_ws_url']})")
+            logger.info(f"  🔧 Worker + ResourceMonitor: ✅")
         else:
             logger.info("  🛰 YeyoNet Satellite: ⏭ (not configured)")
     except Exception as e:
@@ -285,6 +303,9 @@ async def lifespan(app: FastAPI):
     logger.info("🔴 YeyoOS Backend cerrando...")
     if _yeyonet_client:
         await _yeyonet_client.stop()
+    _res_mon = _yeyonet_client_holder.get("resource_monitor")
+    if _res_mon:
+        await _res_mon.stop()
     if _cloud_sync:
         await _cloud_sync.stop()
     if _yeyonet_relay:

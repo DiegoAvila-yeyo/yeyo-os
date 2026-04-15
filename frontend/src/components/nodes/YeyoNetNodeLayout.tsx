@@ -71,12 +71,11 @@ const S = {
     cursor: 'pointer',
     color: active ? '#4fc3f7' : '#888',
     background: active ? 'rgba(79,195,247,0.08)' : 'transparent',
-    borderBottom: active ? '2px solid #4fc3f7' : '2px solid transparent',
     transition: 'all 150ms',
-    border: 'none',
     borderTop: 'none',
     borderLeft: 'none',
     borderRight: 'none',
+    borderBottom: active ? '2px solid #4fc3f7' : '2px solid transparent',
     whiteSpace: 'nowrap' as const,
   }),
   content: {

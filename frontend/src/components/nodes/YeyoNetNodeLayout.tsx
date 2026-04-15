@@ -771,9 +771,32 @@ function SyncSatelliteRow({ sat, onTriggerSync }: { sat: Satellite; onTriggerSyn
 // ─── Tab: Config ───────────────────────────────────────────────────────────────
 
 function ConfigTab() {
-  const { identity, fetchIdentity } = useYeyoNetStore();
+  const { identity, fetchIdentity, registerAsSatellite } = useYeyoNetStore();
+
+  const [showRegister, setShowRegister] = useState(false);
+  const [regUrl, setRegUrl] = useState('');
+  const [regCode, setRegCode] = useState('');
+  const [regName, setRegName] = useState('');
+  const [regMode, setRegMode] = useState('completo');
+  const [registering, setRegistering] = useState(false);
+  const [regResult, setRegResult] = useState<{ node_id: string; auth_token: string } | null>(null);
+  const [regError, setRegError] = useState('');
 
   useEffect(() => { fetchIdentity(); }, [fetchIdentity]);
+
+  const handleRegister = useCallback(async () => {
+    if (!regUrl.trim() || !regCode.trim() || !regName.trim()) return;
+    setRegistering(true);
+    setRegError('');
+    try {
+      const result = await registerAsSatellite(regUrl.trim(), regCode.trim(), regName.trim(), regMode);
+      setRegResult(result);
+    } catch (e) {
+      setRegError(String(e));
+    } finally {
+      setRegistering(false);
+    }
+  }, [regUrl, regCode, regName, regMode, registerAsSatellite]);
 
   return (
     <div>
@@ -838,6 +861,106 @@ function ConfigTab() {
         <ServiceStatus label="Satellite Manager" endpoint="/api/v1/yeyonet/satellites" />
         <ServiceStatus label="Job Scheduler" endpoint="/api/v1/yeyonet/jobs/stats" />
         <ServiceStatus label="Sync Engine" endpoint="/api/v1/yeyonet/sync/stats" />
+        <ServiceStatus label="Cloud Sync" endpoint="/api/v1/cloud-sync/status" />
+      </div>
+
+      {/* Register as Satellite */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>🛰 Registrar como Satélite</div>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
+          ¿Tienes un código de invitación? Pégalo aquí para conectar esta PC a otra Central.
+        </div>
+
+        {!showRegister && !regResult && (
+          <button style={S.btn('#9b59b6')} onClick={() => setShowRegister(true)}>
+            🔗 Tengo un código de invitación
+          </button>
+        )}
+
+        {showRegister && !regResult && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <label style={S.mutedLabel}>URL de la Central (IP o dominio)</label>
+              <input
+                style={{ ...S.input, marginTop: 4, width: '100%' }}
+                placeholder="ej: http://192.168.1.100:8000"
+                value={regUrl}
+                onChange={e => setRegUrl(e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={S.mutedLabel}>Código de invitación</label>
+              <input
+                style={{ ...S.input, marginTop: 4, width: '100%', letterSpacing: 2, fontSize: 16 }}
+                placeholder="YEYO-XXXX-XXXX-XXXX"
+                value={regCode}
+                onChange={e => setRegCode(e.target.value.toUpperCase())}
+              />
+            </div>
+            <div>
+              <label style={S.mutedLabel}>Nombre de esta PC</label>
+              <input
+                style={{ ...S.input, marginTop: 4, width: '100%' }}
+                placeholder="ej: Desktop Diego"
+                value={regName}
+                onChange={e => setRegName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={S.mutedLabel}>Modo</label>
+              <select
+                style={{ ...S.select, width: '100%', marginTop: 4 }}
+                value={regMode}
+                onChange={e => setRegMode(e.target.value)}
+              >
+                <option value="completo">Completo (GPU + Chat + Memoria)</option>
+                <option value="ligero">Ligero (solo Chat)</option>
+                <option value="minimo">Mínimo (solo UI)</option>
+              </select>
+            </div>
+
+            {regError && (
+              <div style={{ fontSize: 11, color: '#ff5050', background: 'rgba(255,80,80,0.08)', padding: '6px 10px', borderRadius: 4 }}>
+                ❌ {regError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                style={S.btn('#9b59b6')}
+                onClick={handleRegister}
+                disabled={registering || !regUrl.trim() || !regCode.trim() || !regName.trim()}
+              >
+                {registering ? '⏳ Registrando...' : '✅ Registrar'}
+              </button>
+              <button style={S.btn('#888')} onClick={() => { setShowRegister(false); setRegError(''); }}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {regResult && (
+          <div style={{
+            background: 'rgba(0,230,118,0.05)', border: '1px solid #00e67640',
+            borderRadius: 8, padding: 16,
+          }}>
+            <div style={{ fontSize: 14, color: '#00e676', fontWeight: 600, marginBottom: 8 }}>
+              ✅ ¡Registrado exitosamente!
+            </div>
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
+              Node ID: <span style={{ color: '#4fc3f7', fontFamily: 'monospace' }}>{regResult.node_id}</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#888' }}>
+              Token: <span style={{ color: '#4fc3f7', fontFamily: 'monospace' }}>{regResult.auth_token.slice(0, 16)}...</span>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <button style={S.btn('#888')} onClick={() => { setRegResult(null); setShowRegister(false); }}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

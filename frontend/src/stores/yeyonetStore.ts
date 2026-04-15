@@ -95,6 +95,7 @@ interface YeyoNetState {
   }) => Promise<InviteResult>;
   cancelJob: (jobId: string) => Promise<void>;
   triggerSync: (nodeId: string) => Promise<void>;
+  registerAsSatellite: (centralUrl: string, code: string, name: string, mode: string) => Promise<{ node_id: string; auth_token: string }>;
   clearError: () => void;
 }
 
@@ -207,5 +208,19 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
     } catch (err) {
       set({ error: String(err) });
     }
+  },
+
+  registerAsSatellite: async (centralUrl: string, code: string, name: string, mode: string) => {
+    const url = `${centralUrl.replace(/\/$/, '')}/api/v1/yeyonet/register`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invitation_code: code, satellite_name: name, mode }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
   },
 }));

@@ -212,14 +212,20 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
 
   registerAsSatellite: async (centralUrl: string, code: string, name: string, mode: string) => {
     const url = `${centralUrl.replace(/\/$/, '')}/api/v1/yeyonet/register`;
+    // Ensure code has dashes: YEYO-XXXX-XXXX-XXXX
+    let formatted = code.replace(/-/g, '');
+    if (formatted.length === 16) {
+      formatted = `${formatted.slice(0,4)}-${formatted.slice(4,8)}-${formatted.slice(8,12)}-${formatted.slice(12,16)}`;
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ invitation_code: code, satellite_name: name, mode }),
+      body: JSON.stringify({ code: formatted, node_name: name, mode }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `HTTP ${res.status}`);
+      const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail ?? err);
+      throw new Error(detail || `HTTP ${res.status}`);
     }
     return res.json();
   },

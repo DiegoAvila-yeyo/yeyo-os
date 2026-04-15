@@ -42,6 +42,7 @@ from src.api.routes.nodes import router as nodes_router
 from src.api.routes.code import router as code_router, set_ia_provider as set_code_ia, set_code_ia_provider, set_memory_service as set_code_memory
 from src.api.routes.video import router as video_router, get_ia_provider as video_get_ia, get_flash_memory as video_get_memory, set_video_memory_service
 from src.api.routes.yeyonet import router as yeyonet_router, get_invite_manager as yeyonet_get_invite, get_satellite_manager as yeyonet_get_sat, get_node_identity as yeyonet_get_identity, get_job_orchestrator as yeyonet_get_orchestrator, get_sync_manager as yeyonet_get_sync
+from src.api.routes.cloud_sync import router as cloud_sync_router, get_cloud_sync as cloud_sync_get
 
 logger = logging.getLogger("yeyoos.api")
 
@@ -64,6 +65,15 @@ _satellite_manager = None  # YeyoNet SatelliteManager
 _yeyonet_relay = None  # YeyoNet Relay Server
 _job_orchestrator = None  # YeyoNet JobOrchestrator
 _sync_manager = None  # YeyoNet SyncManager
+_cloud_sync = None  # Cloud Memory Sync (Supabase)
+
+
+def _get_fallback_node_id() -> str:
+    """Generate a deterministic node_id from hostname when YeyoNet isn't available."""
+    import hashlib
+    import socket
+    hostname = socket.gethostname()
+    return hashlib.sha256(hostname.encode()).hexdigest()[:32]
 
 
 @asynccontextmanager
@@ -76,6 +86,7 @@ async def lifespan(app: FastAPI):
     global _yeyonet_relay
     global _job_orchestrator
     global _sync_manager
+    global _cloud_sync
 
     _start_time = time.time()
     config = get_config()
@@ -208,6 +219,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"  🌐 YeyoNet: ❌ ({e})")
 
+    # 8. Cloud Memory Sync (Supabase) — optional
+    import os
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    supabase_key = os.getenv("SUPABASE_KEY", "")
+    if supabase_url and supabase_key and pool:
+        try:
+            from src.memory.cloud_sync import CloudSyncService
+            node_id = _node_identity.node_id if _node_identity else _get_fallback_node_id()
+            _cloud_sync = CloudSyncService(pool, supabase_url, supabase_key, node_id)
+            await _cloud_sync.start()
+            logger.info("  ☁️  Cloud Sync (Supabase): ✅")
+        except Exception as e:
+            logger.warning(f"  ☁️  Cloud Sync: ❌ ({e})")
+    else:
+        logger.info("  ☁️  Cloud Sync: ⏭ (SUPABASE_URL/KEY not set)")
+
     # Inyectar dependencias en los routers
     _wire_dependencies()
 
@@ -227,6 +254,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("🔴 YeyoOS Backend cerrando...")
+    if _cloud_sync:
+        await _cloud_sync.stop()
     if _yeyonet_relay:
         await _yeyonet_relay.stop()
     if _job_orchestrator:
@@ -336,6 +365,12 @@ def _wire_dependencies():
 
         app.dependency_overrides[yeyonet_get_sync] = _real_sync_manager
 
+    # Cloud sync dependency (return None if not configured — routes handle gracefully)
+    async def _real_cloud_sync():
+        return _cloud_sync
+
+    app.dependency_overrides[cloud_sync_get] = _real_cloud_sync
+
 
 app = FastAPI(
     title="YeyoOS API",
@@ -442,6 +477,7 @@ app.include_router(nodes_router)
 app.include_router(code_router)
 app.include_router(video_router)
 app.include_router(yeyonet_router)
+app.include_router(cloud_sync_router)
 
 
 # ========== WebSocket ==========

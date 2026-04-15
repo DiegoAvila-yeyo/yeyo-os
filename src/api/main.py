@@ -13,9 +13,13 @@ Servicios activos:
 """
 
 import json
+import os
 import time
 import logging
 from contextlib import asynccontextmanager
+
+from dotenv import load_dotenv
+load_dotenv()
 
 import asyncpg
 

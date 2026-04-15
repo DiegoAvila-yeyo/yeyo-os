@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import asyncpg
 
@@ -185,7 +185,7 @@ class SatelliteManager:
         Llamar periódicamente (ej: cada 60s).
         Returns: número de nodos actualizados.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         idle_cutoff = now - ONLINE_THRESHOLD
         offline_cutoff = now - IDLE_THRESHOLD
 

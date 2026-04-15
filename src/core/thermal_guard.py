@@ -10,7 +10,7 @@ Lógica de throttling:
   - Si no hay sensor de temperatura CPU disponible, throttlea por uso de CPU (>85% sostenido)
 
 Umbrales (conservadores para GTX 1060 3GB / CPU genérica):
-  GPU: pausa a 72°C, reanuda a 60°C, crítico a 85°C
+  GPU: pausa a 78°C, reanuda a 65°C, crítico a 92°C
   CPU: pausa a 70°C, reanuda a 58°C, crítico a 90°C
 
 Fuentes de temperatura CPU en Windows (orden de preferencia):
@@ -27,9 +27,9 @@ from dataclasses import dataclass, field
 logger = logging.getLogger("yeyoos.core.thermal")
 
 # ── Umbrales ───────────────────────────────────────────────────────────────
-GPU_PAUSE_TEMP    = 72   # °C — pausa la generación
-GPU_RESUME_TEMP   = 60   # °C — reanuda la generación
-GPU_CRITICAL_TEMP = 85   # °C — aborta la generación
+GPU_PAUSE_TEMP    = 78   # °C — pausa la generación
+GPU_RESUME_TEMP   = 65   # °C — reanuda la generación
+GPU_CRITICAL_TEMP = 92   # °C — aborta la generación
 
 CPU_PAUSE_TEMP    = 70   # °C — pausa la generación
 CPU_RESUME_TEMP   = 58   # °C — reanuda la generación

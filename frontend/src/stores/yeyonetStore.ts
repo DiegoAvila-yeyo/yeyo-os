@@ -30,7 +30,9 @@ export interface Job {
   priority: number;
   payload: Record<string, unknown>;
   assigned_node?: string;
+  assigned_to?: string;
   progress?: number;
+  progress_detail?: string;
   result?: Record<string, unknown>;
   error?: string;
   created_at: string;
@@ -43,9 +45,11 @@ export interface JobStats {
   total: number;
   by_status: {
     queued: number;
+    assigned: number;
     running: number;
     completed: number;
     failed: number;
+    cancelled: number;
   };
   by_type: Record<string, number>;
 }

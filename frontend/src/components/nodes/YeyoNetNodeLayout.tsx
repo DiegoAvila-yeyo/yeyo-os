@@ -460,32 +460,46 @@ function SatelliteCard({ sat, onTriggerSync }: { sat: Satellite; onTriggerSync: 
 
 function RenderFarmTab() {
   const { jobs, jobStats, fetchJobs, fetchJobStats, cancelJob } = useYeyoNetStore();
-  const [showCreateJob, setShowCreateJob] = useState(false);
-  const [jobType, setJobType] = useState('render');
-  const [jobPayload, setJobPayload] = useState('');
-  const [jobPriority, setJobPriority] = useState(5);
+  const [activeForm, setActiveForm] = useState<'none' | 'text' | 'image' | 'custom'>('none');
   const [creating, setCreating] = useState(false);
+  const [expandedJob, setExpandedJob] = useState<string | null>(null);
+
+  // Text inference form
+  const [prompt, setPrompt] = useState('');
+  const [model, setModel] = useState('qwen2.5:3b');
+  const [temperature, setTemperature] = useState(0.7);
+
+  // Image form
+  const [imgPrompt, setImgPrompt] = useState('');
+  const [imgSteps, setImgSteps] = useState(20);
+  const [imgWidth, setImgWidth] = useState(512);
+  const [imgHeight, setImgHeight] = useState(512);
+
+  // Custom form
+  const [customType, setCustomType] = useState('custom');
+  const [customPayload, setCustomPayload] = useState('');
+  const [jobPriority, setJobPriority] = useState(7);
 
   useEffect(() => {
     fetchJobs();
     fetchJobStats();
-    const iv = setInterval(() => { fetchJobs(); fetchJobStats(); }, 15_000);
+    const iv = setInterval(() => { fetchJobs(); fetchJobStats(); }, 5_000);
     return () => clearInterval(iv);
   }, [fetchJobs, fetchJobStats]);
 
-  const handleCreateJob = useCallback(async () => {
+  const submitJob = useCallback(async (type: string, payload: Record<string, unknown>, priority = 7) => {
     setCreating(true);
     try {
-      let payload: Record<string, unknown> = {};
-      try { payload = JSON.parse(jobPayload); } catch { payload = { raw: jobPayload }; }
       const res = await fetch('/api/v1/yeyonet/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: jobType, payload, priority: jobPriority }),
+        body: JSON.stringify({ type, payload, priority, timeout_seconds: 120 }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setShowCreateJob(false);
-      setJobPayload('');
+      setActiveForm('none');
+      setPrompt('');
+      setImgPrompt('');
+      setCustomPayload('');
       fetchJobs();
       fetchJobStats();
     } catch {
@@ -493,103 +507,266 @@ function RenderFarmTab() {
     } finally {
       setCreating(false);
     }
-  }, [jobType, jobPayload, jobPriority, fetchJobs, fetchJobStats]);
+  }, [fetchJobs, fetchJobStats]);
 
-  const running = jobs.filter(j => j.status === 'running');
-  const completed = jobs.filter(j => j.status === 'completed').slice(0, 10);
+  const running = jobs.filter(j => ['running', 'assigned'].includes(j.status));
+  const queued = jobs.filter(j => j.status === 'queued');
+  const completed = jobs.filter(j => j.status === 'completed').slice(0, 15);
+  const failed = jobs.filter(j => j.status === 'failed').slice(0, 5);
   const sts = jobStats?.by_status;
 
   return (
     <div>
-      {/* Stats card */}
+      {/* Stats */}
       <div style={S.card}>
-        <div style={S.cardTitle}>🖥 Render Farm — Estadísticas</div>
+        <div style={S.cardTitle}>🖥 Render Farm</div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <div style={S.statBox('#4fc3f7')}>
             <div style={S.bigNumber}>{jobStats?.total ?? 0}</div>
-            <div style={S.mutedLabel}>Total Jobs</div>
+            <div style={S.mutedLabel}>Total</div>
           </div>
           <div style={S.statBox('#00e676')}>
             <div style={{ ...S.bigNumber, color: '#00e676' }}>{sts?.completed ?? 0}</div>
             <div style={S.mutedLabel}>Completados</div>
           </div>
           <div style={S.statBox('#ffb900')}>
-            <div style={{ ...S.bigNumber, color: '#ffb900' }}>{sts?.running ?? 0}</div>
+            <div style={{ ...S.bigNumber, color: '#ffb900' }}>{(sts?.running ?? 0) + (sts?.assigned ?? 0)}</div>
             <div style={S.mutedLabel}>Ejecutando</div>
-          </div>
-          <div style={S.statBox('#ff5050')}>
-            <div style={{ ...S.bigNumber, color: '#ff5050' }}>{sts?.failed ?? 0}</div>
-            <div style={S.mutedLabel}>Fallidos</div>
           </div>
           <div style={S.statBox('#888')}>
             <div style={{ ...S.bigNumber, color: '#aaa' }}>{sts?.queued ?? 0}</div>
             <div style={S.mutedLabel}>En cola</div>
           </div>
+          <div style={S.statBox('#ff5050')}>
+            <div style={{ ...S.bigNumber, color: '#ff5050' }}>{sts?.failed ?? 0}</div>
+            <div style={S.mutedLabel}>Fallidos</div>
+          </div>
         </div>
       </div>
 
-      {/* Create Job */}
-      <div style={{ marginBottom: 16 }}>
-        {!showCreateJob ? (
-          <button style={S.btn('#4fc3f7')} onClick={() => setShowCreateJob(true)}>
-            ➕ Crear Job
-          </button>
-        ) : (
-          <div style={{ ...S.card, borderColor: '#4fc3f740' }}>
-            <div style={S.cardTitle}>📋 Nuevo Job</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={S.mutedLabel}>Tipo</label>
-                  <select
-                    style={{ ...S.select, width: '100%', marginTop: 4 }}
-                    value={jobType}
-                    onChange={e => setJobType(e.target.value)}
-                  >
-                    <option value="render">Render</option>
-                    <option value="transcode">Transcode</option>
-                    <option value="inference">Inference</option>
-                    <option value="batch_process">Batch Process</option>
-                    <option value="custom">Custom</option>
-                  </select>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={S.mutedLabel}>Prioridad (1-10)</label>
-                  <input
-                    type="number"
-                    style={{ ...S.input, marginTop: 4 }}
-                    value={jobPriority}
-                    onChange={e => setJobPriority(Number(e.target.value))}
-                    min={1} max={10}
-                  />
-                </div>
-              </div>
-              <div>
-                <label style={S.mutedLabel}>Payload (JSON o texto)</label>
-                <textarea
-                  style={{ ...S.input, marginTop: 4, minHeight: 80, resize: 'vertical' }}
-                  value={jobPayload}
-                  onChange={e => setJobPayload(e.target.value)}
-                  placeholder='{"scene": "main", "frames": [1, 250]}'
-                />
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button style={S.btn('#4fc3f7')} onClick={handleCreateJob} disabled={creating}>
-                  {creating ? '⏳ Enviando...' : '🚀 Enviar Job'}
-                </button>
-                <button style={S.btn('#888')} onClick={() => setShowCreateJob(false)}>
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+      {/* Quick Actions */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <button
+          style={{
+            ...S.btn(activeForm === 'text' ? '#00e676' : '#4fc3f7'),
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+          onClick={() => setActiveForm(activeForm === 'text' ? 'none' : 'text')}
+        >
+          💬 Inferencia de Texto
+        </button>
+        <button
+          style={{
+            ...S.btn(activeForm === 'image' ? '#00e676' : '#e040fb'),
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+          onClick={() => setActiveForm(activeForm === 'image' ? 'none' : 'image')}
+        >
+          🎨 Generar Imagen
+        </button>
+        <button
+          style={{
+            ...S.btn(activeForm === 'custom' ? '#00e676' : '#888'),
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+          onClick={() => setActiveForm(activeForm === 'custom' ? 'none' : 'custom')}
+        >
+          ⚙️ Job Custom
+        </button>
       </div>
 
-      {/* Running jobs */}
+      {/* Text Inference Form */}
+      {activeForm === 'text' && (
+        <div style={{ ...S.card, borderColor: '#4fc3f740' }}>
+          <div style={S.cardTitle}>💬 Inferencia de Texto — Ollama Distribuido</div>
+          <p style={{ color: '#889', fontSize: 12, margin: '0 0 12px' }}>
+            Envía un prompt a un satélite con Ollama. Se ejecuta en la máquina remota y el resultado regresa aquí.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={S.mutedLabel}>Prompt</label>
+              <textarea
+                style={{ ...S.input, marginTop: 4, minHeight: 80, resize: 'vertical' }}
+                value={prompt}
+                onChange={e => setPrompt(e.target.value)}
+                placeholder="Escribe tu pregunta o prompt aquí..."
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={S.mutedLabel}>Modelo</label>
+                <select
+                  style={{ ...S.select, width: '100%', marginTop: 4 }}
+                  value={model}
+                  onChange={e => setModel(e.target.value)}
+                >
+                  <option value="qwen2.5:3b">qwen2.5:3b (rápido)</option>
+                  <option value="qwen2.5:0.5b">qwen2.5:0.5b (ultra rápido)</option>
+                  <option value="qwen2.5-coder:7b">qwen2.5-coder:7b (código)</option>
+                  <option value="qwen3:4b">qwen3:4b (potente)</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={S.mutedLabel}>Temperatura: {temperature}</label>
+                <input
+                  type="range"
+                  min={0} max={1.5} step={0.1}
+                  style={{ width: '100%', marginTop: 8 }}
+                  value={temperature}
+                  onChange={e => setTemperature(Number(e.target.value))}
+                />
+              </div>
+            </div>
+            <button
+              style={S.btn('#4fc3f7')}
+              disabled={creating || !prompt.trim()}
+              onClick={() => submitJob('text_inference', {
+                prompt: prompt.trim(), model, temperature,
+              }, 8)}
+            >
+              {creating ? '⏳ Enviando...' : '🚀 Enviar a Satélite'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Image Form */}
+      {activeForm === 'image' && (
+        <div style={{ ...S.card, borderColor: '#e040fb40' }}>
+          <div style={S.cardTitle}>🎨 Generar Imagen — GPU Distribuida</div>
+          <p style={{ color: '#889', fontSize: 12, margin: '0 0 12px' }}>
+            Envía un prompt de imagen a un satélite con GPU. Se ejecutará con Stable Diffusion / Flux.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={S.mutedLabel}>Prompt</label>
+              <textarea
+                style={{ ...S.input, marginTop: 4, minHeight: 60, resize: 'vertical' }}
+                value={imgPrompt}
+                onChange={e => setImgPrompt(e.target.value)}
+                placeholder="A cyberpunk city at sunset, neon lights, volumetric fog..."
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={S.mutedLabel}>Ancho</label>
+                <select style={{ ...S.select, width: '100%', marginTop: 4 }} value={imgWidth}
+                  onChange={e => setImgWidth(Number(e.target.value))}
+                >
+                  <option value={256}>256px</option>
+                  <option value={512}>512px</option>
+                  <option value={768}>768px</option>
+                  <option value={1024}>1024px</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={S.mutedLabel}>Alto</label>
+                <select style={{ ...S.select, width: '100%', marginTop: 4 }} value={imgHeight}
+                  onChange={e => setImgHeight(Number(e.target.value))}
+                >
+                  <option value={256}>256px</option>
+                  <option value={512}>512px</option>
+                  <option value={768}>768px</option>
+                  <option value={1024}>1024px</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={S.mutedLabel}>Steps: {imgSteps}</label>
+                <input
+                  type="range" min={5} max={50} step={5}
+                  style={{ width: '100%', marginTop: 8 }}
+                  value={imgSteps}
+                  onChange={e => setImgSteps(Number(e.target.value))}
+                />
+              </div>
+            </div>
+            <button
+              style={S.btn('#e040fb')}
+              disabled={creating || !imgPrompt.trim()}
+              onClick={() => submitJob('image_generate', {
+                prompt: imgPrompt.trim(), width: imgWidth, height: imgHeight, steps: imgSteps,
+              }, 7)}
+            >
+              {creating ? '⏳ Enviando...' : '🎨 Generar Imagen'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Job Form */}
+      {activeForm === 'custom' && (
+        <div style={{ ...S.card, borderColor: '#88888840' }}>
+          <div style={S.cardTitle}>⚙️ Job Custom</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={S.mutedLabel}>Tipo</label>
+                <select style={{ ...S.select, width: '100%', marginTop: 4 }} value={customType}
+                  onChange={e => setCustomType(e.target.value)}
+                >
+                  <option value="text_inference">text_inference</option>
+                  <option value="image_generate">image_generate</option>
+                  <option value="video_render">video_render</option>
+                  <option value="training_step">training_step</option>
+                  <option value="memory_sync">memory_sync</option>
+                  <option value="custom">custom</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={S.mutedLabel}>Prioridad (1-10)</label>
+                <input type="number" style={{ ...S.input, marginTop: 4 }}
+                  value={jobPriority} onChange={e => setJobPriority(Number(e.target.value))}
+                  min={1} max={10}
+                />
+              </div>
+            </div>
+            <div>
+              <label style={S.mutedLabel}>Payload (JSON)</label>
+              <textarea
+                style={{ ...S.input, marginTop: 4, minHeight: 80, resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
+                value={customPayload}
+                onChange={e => setCustomPayload(e.target.value)}
+                placeholder='{"prompt": "...", "model": "qwen2.5:3b"}'
+              />
+            </div>
+            <button style={S.btn('#888')} disabled={creating}
+              onClick={() => {
+                let payload: Record<string, unknown> = {};
+                try { payload = JSON.parse(customPayload); } catch { payload = { raw: customPayload }; }
+                submitJob(customType, payload, jobPriority);
+              }}
+            >
+              {creating ? '⏳ Enviando...' : '🚀 Enviar Job'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Queued */}
+      {queued.length > 0 && (
+        <div style={S.card}>
+          <div style={S.cardTitle}>⏳ En Cola ({queued.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {queued.map(job => (
+              <div key={job.id} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 12px', background: '#0d0d1a', borderRadius: 6, fontSize: 12,
+              }}>
+                <span style={S.tag('#aaa')}>{job.type}</span>
+                <span style={{ color: '#556' }}>esperando asignación...</span>
+                <button style={{ ...S.btn('#ff5050'), padding: '2px 8px', fontSize: 10, marginLeft: 'auto' }}
+                  onClick={() => cancelJob(job.id)}
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Running / Assigned */}
       {running.length > 0 && (
         <div style={S.card}>
-          <div style={S.cardTitle}>⚡ Jobs en Ejecución</div>
+          <div style={S.cardTitle}>⚡ Ejecutando ({running.length})</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {running.map(job => {
               const pct = job.progress ?? 0;
@@ -602,17 +779,18 @@ function RenderFarmTab() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                     <span style={S.tag('#ffb900')}>{job.type}</span>
                     <span style={{ fontSize: 12, color: '#e0f7fa' }}>{pct}%</span>
-                    {job.assigned_node && (
+                    {job.progress_detail && (
+                      <span style={{ fontSize: 11, color: '#889' }}>{job.progress_detail}</span>
+                    )}
+                    {(job.assigned_node || job.assigned_to) && (
                       <span style={{ fontSize: 10, color: '#556', marginLeft: 'auto' }}>
-                        📍 {job.assigned_node}
+                        📍 {(job.assigned_node || job.assigned_to || '').slice(0, 8)}...
                       </span>
                     )}
                     <button
                       style={{ ...S.btn('#ff5050'), padding: '2px 8px', fontSize: 10 }}
                       onClick={() => cancelJob(job.id)}
-                    >
-                      ✕
-                    </button>
+                    >✕</button>
                   </div>
                   <div style={pb.outer}><div style={pb.inner} /></div>
                 </div>
@@ -622,27 +800,85 @@ function RenderFarmTab() {
         </div>
       )}
 
-      {/* Completed jobs */}
+      {/* Completed — with expandable results */}
       {completed.length > 0 && (
         <div style={S.card}>
-          <div style={S.cardTitle}>✅ Recientes Completados</div>
+          <div style={S.cardTitle}>✅ Completados</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {completed.map(job => {
               const durationMs = job.completed_at && job.started_at
                 ? new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()
                 : null;
               const durationStr = durationMs != null ? `${(durationMs / 1000).toFixed(1)}s` : '—';
+              const isExpanded = expandedJob === job.id;
+              const result = (job.result || {}) as Record<string, string | number | boolean | null>;
+
               return (
-                <div key={job.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 12px', background: '#0d0d1a', borderRadius: 6,
-                  fontSize: 12,
-                }}>
-                  <span style={S.tag('#00e676')}>{job.type}</span>
-                  <span style={{ color: '#888' }}>⏱ {durationStr}</span>
-                  <span style={{ color: '#556', fontSize: 10, marginLeft: 'auto' }}>
-                    {relativeTime(job.completed_at)}
-                  </span>
+                <div key={job.id}>
+                  <div
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '8px 12px', background: '#0d0d1a', borderRadius: isExpanded ? '6px 6px 0 0' : 6,
+                      fontSize: 12, cursor: 'pointer',
+                    }}
+                    onClick={() => setExpandedJob(isExpanded ? null : job.id)}
+                  >
+                    <span style={S.tag('#00e676')}>{job.type}</span>
+                    <span style={{ color: '#888' }}>⏱ {durationStr}</span>
+                    {job.type === 'text_inference' && result.tokens && (
+                      <span style={{ color: '#4fc3f7', fontSize: 10 }}>
+                        {result.tokens} tokens
+                      </span>
+                    )}
+                    <span style={{ color: '#556', fontSize: 10, marginLeft: 'auto' }}>
+                      {isExpanded ? '▼' : '▶'} {relativeTime(job.completed_at)}
+                    </span>
+                  </div>
+
+                  {/* Expanded result */}
+                  {isExpanded && (
+                    <div style={{
+                      padding: 12, background: '#080812', borderRadius: '0 0 6px 6px',
+                      border: '1px solid #1a1a2e', borderTop: 'none',
+                    }}>
+                      {job.type === 'text_inference' && result.response ? (
+                        <div>
+                          <div style={{ fontSize: 11, color: '#889', marginBottom: 8 }}>
+                            Modelo: {result.model} · {result.tokens} tokens · {result.duration_ms}ms
+                          </div>
+                          <div style={{
+                            padding: 12, background: '#0d0d1a', borderRadius: 6,
+                            fontSize: 13, color: '#e0f7fa', lineHeight: 1.5,
+                            whiteSpace: 'pre-wrap', maxHeight: 300, overflowY: 'auto',
+                          }}>
+                            {result.response}
+                          </div>
+                        </div>
+                      ) : job.type === 'image_generate' ? (
+                        <div>
+                          <div style={{ fontSize: 11, color: '#889', marginBottom: 8 }}>
+                            Prompt: &quot;{result.prompt}&quot; · {result.width}x{result.height} · {result.steps} steps
+                          </div>
+                          <div style={{
+                            padding: 16, background: '#0d0d1a', borderRadius: 6,
+                            textAlign: 'center', color: '#e040fb',
+                          }}>
+                            {result.status === 'placeholder_generated'
+                              ? '🎨 Placeholder — integrar Stable Diffusion para imágenes reales'
+                              : '✅ Imagen generada'}
+                          </div>
+                        </div>
+                      ) : (
+                        <pre style={{
+                          padding: 10, background: '#0d0d1a', borderRadius: 6,
+                          fontSize: 11, color: '#aaa', whiteSpace: 'pre-wrap',
+                          maxHeight: 200, overflowY: 'auto', margin: 0,
+                        }}>
+                          {JSON.stringify(result, null, 2)}
+                        </pre>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -650,9 +886,29 @@ function RenderFarmTab() {
         </div>
       )}
 
+      {/* Failed */}
+      {failed.length > 0 && (
+        <div style={S.card}>
+          <div style={S.cardTitle}>❌ Fallidos</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {failed.map(job => (
+              <div key={job.id} style={{
+                padding: '8px 12px', background: '#1a0d0d', borderRadius: 6,
+                fontSize: 12, border: '1px solid #3a1010',
+              }}>
+                <span style={S.tag('#ff5050')}>{job.type}</span>
+                <span style={{ color: '#ff8888', marginLeft: 8 }}>
+                  {String(job.result?.error || 'Error desconocido')}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {jobs.length === 0 && (
         <div style={{ color: '#556', fontSize: 13, textAlign: 'center', padding: 32 }}>
-          🖥 No hay jobs registrados. Crea uno para comenzar.
+          🖥 No hay jobs. Usa los botones de arriba para enviar trabajo a los satélites.
         </div>
       )}
     </div>

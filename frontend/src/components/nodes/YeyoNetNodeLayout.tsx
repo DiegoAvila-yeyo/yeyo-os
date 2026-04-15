@@ -13,6 +13,7 @@ import {
   type Satellite,
   type Job,
   type YeyoNetTab,
+  type ConnectionStatus,
 } from '@/stores/yeyonetStore';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -773,7 +774,12 @@ function SyncSatelliteRow({ sat, onTriggerSync }: { sat: Satellite; onTriggerSyn
 // ─── Tab: Config ───────────────────────────────────────────────────────────────
 
 function ConfigTab() {
-  const { identity, fetchIdentity, registerAsSatellite } = useYeyoNetStore();
+  const {
+    identity, fetchIdentity,
+    registerAsSatellite,
+    connectionStatus, fetchConnectionStatus,
+    connectAsSatellite, disconnectSatellite,
+  } = useYeyoNetStore();
 
   const [showRegister, setShowRegister] = useState(false);
   const [regUrl, setRegUrl] = useState('');
@@ -783,8 +789,16 @@ function ConfigTab() {
   const [registering, setRegistering] = useState(false);
   const [regResult, setRegResult] = useState<{ node_id: string; auth_token: string } | null>(null);
   const [regError, setRegError] = useState('');
+  const [disconnecting, setDisconnecting] = useState(false);
 
-  useEffect(() => { fetchIdentity(); }, [fetchIdentity]);
+  useEffect(() => { fetchIdentity(); fetchConnectionStatus(); }, [fetchIdentity, fetchConnectionStatus]);
+
+  // Poll connection status while configured
+  useEffect(() => {
+    if (!connectionStatus?.configured) return;
+    const interval = setInterval(() => fetchConnectionStatus(), 5000);
+    return () => clearInterval(interval);
+  }, [connectionStatus?.configured, fetchConnectionStatus]);
 
   const handleRegister = useCallback(async () => {
     if (!regUrl.trim() || !regCode.trim() || !regName.trim()) return;
@@ -793,12 +807,30 @@ function ConfigTab() {
     try {
       const result = await registerAsSatellite(regUrl.trim(), regCode.trim(), regName.trim(), regMode);
       setRegResult(result);
+      // Refresh connection status
+      fetchConnectionStatus();
     } catch (e) {
       setRegError(String(e));
     } finally {
       setRegistering(false);
     }
-  }, [regUrl, regCode, regName, regMode, registerAsSatellite]);
+  }, [regUrl, regCode, regName, regMode, registerAsSatellite, fetchConnectionStatus]);
+
+  const handleDisconnect = useCallback(async () => {
+    setDisconnecting(true);
+    try {
+      await disconnectSatellite();
+      setRegResult(null);
+      setShowRegister(false);
+    } finally {
+      setDisconnecting(false);
+    }
+  }, [disconnectSatellite]);
+
+  const handleReconnect = useCallback(async () => {
+    await connectAsSatellite();
+    setTimeout(() => fetchConnectionStatus(), 2000);
+  }, [connectAsSatellite, fetchConnectionStatus]);
 
   return (
     <div>
@@ -830,6 +862,59 @@ function ConfigTab() {
           </div>
         ) : (
           <div style={{ color: '#556', fontSize: 12 }}>Cargando identidad...</div>
+        )}
+      </div>
+
+      {/* Connected Devices */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>🔗 Dispositivos Conectados</div>
+        {connectionStatus?.configured ? (
+          <div style={{
+            background: connectionStatus.connected ? 'rgba(0,230,118,0.05)' : 'rgba(255,185,0,0.05)',
+            border: `1px solid ${connectionStatus.connected ? '#00e67640' : '#ffb90040'}`,
+            borderRadius: 8, padding: 14,
+          }}>
+            <div style={{ fontSize: 12, color: '#aaa', marginBottom: 8 }}>
+              Conectado como satélite a:
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 14 }}>{connectionStatus.connected ? '🟢' : '🟡'}</span>
+              <span style={{ fontSize: 13, color: '#e0f7fa', fontWeight: 600 }}>
+                Central: {connectionStatus.central_name || connectionStatus.central_ws_url || '—'}
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>
+              Node ID: <span style={{ color: '#4fc3f7', fontFamily: 'monospace' }}>
+                {connectionStatus.node_id ? connectionStatus.node_id.slice(0, 12) + '...' : '—'}
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
+              Estado: <span style={{
+                color: connectionStatus.connected ? '#00e676' : '#ffb900',
+                fontWeight: 600,
+              }}>
+                {connectionStatus.connected ? 'conectado' : 'conectando...'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {!connectionStatus.connected && (
+                <button style={S.btn('#4fc3f7')} onClick={handleReconnect}>
+                  🔄 Reconectar
+                </button>
+              )}
+              <button
+                style={S.btn('#ff5050')}
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+              >
+                {disconnecting ? '⏳...' : '⛔ Desconectar'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: '#556', padding: '8px 0' }}>
+            ⭘ No conectado a ninguna Central
+          </div>
         )}
       </div>
 

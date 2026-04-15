@@ -69,6 +69,15 @@ export interface InviteResult {
   expires_at: string;
 }
 
+export interface ConnectionStatus {
+  configured: boolean;
+  connected: boolean;
+  central_ws_url: string | null;
+  node_id: string | null;
+  central_name: string | null;
+  connected_at: string | null;
+}
+
 export type YeyoNetTab = 'satellites' | 'render' | 'sync' | 'config';
 
 interface YeyoNetState {
@@ -77,6 +86,7 @@ interface YeyoNetState {
   jobStats: JobStats | null;
   syncStats: SyncStats | null;
   identity: NodeIdentity | null;
+  connectionStatus: ConnectionStatus | null;
   activeTab: YeyoNetTab;
   loading: boolean;
   error: string | null;
@@ -87,6 +97,14 @@ interface YeyoNetState {
   fetchJobStats: () => Promise<void>;
   fetchSyncStats: () => Promise<void>;
   fetchIdentity: () => Promise<void>;
+  fetchConnectionStatus: () => Promise<void>;
+  connectAsSatellite: (config?: {
+    node_id: string;
+    auth_token: string;
+    central_ws_url: string;
+    central_name?: string;
+  }) => Promise<void>;
+  disconnectSatellite: () => Promise<void>;
   createInvitation: (req: {
     satellite_name: string;
     permissions: string[];
@@ -95,7 +113,7 @@ interface YeyoNetState {
   }) => Promise<InviteResult>;
   cancelJob: (jobId: string) => Promise<void>;
   triggerSync: (nodeId: string) => Promise<void>;
-  registerAsSatellite: (centralUrl: string, code: string, name: string, mode: string) => Promise<{ node_id: string; auth_token: string }>;
+  registerAsSatellite: (centralUrl: string, code: string, name: string, mode: string) => Promise<{ node_id: string; auth_token: string; central_ws_url: string }>;
   clearError: () => void;
 }
 
@@ -107,6 +125,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   jobStats: null,
   syncStats: null,
   identity: null,
+  connectionStatus: null,
   activeTab: 'satellites',
   loading: false,
   error: null,
@@ -173,6 +192,43 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
     }
   },
 
+  fetchConnectionStatus: async () => {
+    try {
+      const res = await fetch(`${API}/connection`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      set({ connectionStatus: data });
+    } catch (err) {
+      set({ error: String(err) });
+    }
+  },
+
+  connectAsSatellite: async (config) => {
+    try {
+      const res = await fetch(`${API}/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config ?? {}),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Refresh connection status after a short delay to allow WS handshake
+      setTimeout(() => get().fetchConnectionStatus(), 2000);
+      get().fetchConnectionStatus();
+    } catch (err) {
+      set({ error: String(err) });
+    }
+  },
+
+  disconnectSatellite: async () => {
+    try {
+      const res = await fetch(`${API}/disconnect`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      set({ connectionStatus: { configured: false, connected: false, central_ws_url: null, node_id: null, central_name: null, connected_at: null } });
+    } catch (err) {
+      set({ error: String(err) });
+    }
+  },
+
   createInvitation: async (req) => {
     const res = await fetch(`${API}/invite`, {
       method: 'POST',
@@ -227,6 +283,19 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
       const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail ?? err);
       throw new Error(detail || `HTTP ${res.status}`);
     }
-    return res.json();
+    const result = await res.json();
+
+    // Build correct WS URL from the centralUrl the user entered
+    const wsUrl = centralUrl.replace(/\/$/, '').replace(/^http/, 'ws') + '/ws/yeyonet';
+
+    // Save config and start WebSocket client via local backend
+    await get().connectAsSatellite({
+      node_id: result.node_id,
+      auth_token: result.auth_token,
+      central_ws_url: wsUrl,
+      central_name: centralUrl,
+    });
+
+    return result;
   },
 }));

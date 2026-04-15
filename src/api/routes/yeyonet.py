@@ -8,6 +8,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from src.yeyonet.models import (
     InviteRequest,
@@ -388,3 +389,122 @@ async def share_training_corpus(
         node_id, language=language, min_score=min_score
     )
     return {"status": "ok", "entries_shared": shared}
+
+
+# ─── Satellite connection management ────────────────────────
+
+
+class ConnectRequest(BaseModel):
+    node_id: str | None = None
+    auth_token: str | None = None
+    central_ws_url: str | None = None
+    central_name: str | None = None
+
+
+async def get_yeyonet_client():
+    """Dependency placeholder — overridden in main.py."""
+    return None
+
+
+@router.post("/connect")
+async def connect_as_satellite(
+    body: ConnectRequest | None = None,
+    client_holder=Depends(get_yeyonet_client),
+):
+    """Start WebSocket client to Central using saved or provided satellite config."""
+    from src.yeyonet.satellite_config import load_config, save_config
+
+    # If body has config fields, save them first
+    if body and body.node_id and body.auth_token and body.central_ws_url:
+        save_config(
+            node_id=body.node_id,
+            auth_token=body.auth_token,
+            central_ws_url=body.central_ws_url,
+            central_name=body.central_name or "",
+        )
+
+    config = load_config()
+    if not config:
+        raise HTTPException(404, "No satellite config found. Register first.")
+
+    # client_holder is a dict with "client" key, managed by main.py
+    holder = client_holder or {}
+    existing = holder.get("client")
+
+    # If already connected, return status
+    if existing and existing.connected:
+        return {
+            "status": "already_connected",
+            "connected": True,
+            "central_ws_url": config["central_ws_url"],
+            "node_id": config["node_id"],
+            "central_name": config.get("central_name", ""),
+        }
+
+    # Stop old client if exists but disconnected
+    if existing:
+        try:
+            await existing.stop()
+        except Exception:
+            pass
+
+    # Start new client
+    from src.yeyonet.client import YeyoNetClient
+
+    new_client = YeyoNetClient(
+        central_ws_url=config["central_ws_url"],
+        node_id=config["node_id"],
+        auth_token=config["auth_token"],
+    )
+    await new_client.start()
+    holder["client"] = new_client
+    logger.info(f"[satellite] WebSocket client started → {config['central_ws_url']}")
+
+    return {
+        "status": "connecting",
+        "connected": False,  # still connecting async
+        "central_ws_url": config["central_ws_url"],
+        "node_id": config["node_id"],
+        "central_name": config.get("central_name", ""),
+    }
+
+
+@router.post("/disconnect")
+async def disconnect_satellite(
+    client_holder=Depends(get_yeyonet_client),
+):
+    """Stop WebSocket client and clear config."""
+    from src.yeyonet.satellite_config import clear_config
+
+    holder = client_holder or {}
+    existing = holder.get("client")
+    if existing:
+        await existing.stop()
+        holder["client"] = None
+        logger.info("[satellite] WebSocket client stopped")
+
+    clear_config()
+    return {"status": "disconnected", "connected": False}
+
+
+@router.get("/connection")
+async def get_connection_status(
+    client_holder=Depends(get_yeyonet_client),
+):
+    """Get current satellite connection status."""
+    from src.yeyonet.satellite_config import load_config
+
+    config = load_config()
+    holder = client_holder or {}
+    existing = holder.get("client")
+
+    connected = bool(existing and existing.connected)
+
+    return {
+        "configured": config is not None,
+        "connected": connected,
+        "central_ws_url": config["central_ws_url"] if config else None,
+        "node_id": config["node_id"] if config else None,
+        "central_name": config.get("central_name", "") if config else None,
+        "connected_at": config.get("connected_at") if config else None,
+    }

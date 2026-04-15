@@ -140,7 +140,7 @@ class InviteRequest(BaseModel):
     satellite_name: str = Field(..., min_length=1, max_length=100)
     permissions: list[Permission] = Field(default_factory=lambda: [Permission.CHAT])
     visibility_level: int = Field(default=1, ge=1, le=4)
-    expires_in_days: int = Field(default=7, ge=1, le=30)
+    expires_in_days: int = Field(default=7, ge=1, le=9999)
 
 
 class RegisterRequest(BaseModel):

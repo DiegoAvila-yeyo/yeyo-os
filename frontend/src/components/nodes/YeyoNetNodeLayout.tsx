@@ -332,7 +332,7 @@ function SatellitesTab() {
                     value={invExpiry}
                     onChange={e => setInvExpiry(Number(e.target.value))}
                     min={1}
-                    max={30}
+                    max={9999}
                   />
                 </div>
               </div>

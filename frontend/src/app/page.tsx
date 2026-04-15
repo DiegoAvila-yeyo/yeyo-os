@@ -27,10 +27,17 @@ import { KillSwitchOverlay } from '@/components/security/KillSwitchOverlay';
 import { useChatStore } from '@/lib/store/chat-store';
 
 // Node workspaces
-import { ImageNodeLayout } from '@/components/nodes/ImageNodeLayout';
+import {
+  ImageNodeLayout,
+  type ChatMessage as ImageChatMessage,
+  type ImageGenerada,
+} from '@/components/nodes/ImageNodeLayout';
 import { VideoNodeLayout } from '@/components/nodes/VideoNodeLayout';
 import { CodeNodeLayout } from '@/components/nodes/CodeNodeLayout';
 import { AutomationNodeLayout } from '@/components/nodes/AutomationNodeLayout';
+import { MemoryNodeLayout } from '@/components/nodes/MemoryNodeLayout';
+import { MemoryMapLayout } from '@/components/nodes/MemoryMapLayout';
+import { YeyoNetNodeLayout } from '@/components/nodes/YeyoNetNodeLayout';
 import ChatPanel from '@/components/chat/ChatPanel';
 
 // ─── Nodos disponibles en el Hub ───────────────────────────────────────────────
@@ -41,12 +48,40 @@ const NODOS_HUB: NodoLibreInfo[] = [
   { id: 'automacion',label: 'Automatizar',tipo: 'automation', icono: '⚡',  colorAcento: '#ffa500' },
   { id: 'chat',      label: 'Chat',       tipo: 'chat',       icono: '💬',  colorAcento: '#ff4444' },
   { id: 'memoria',   label: 'Memoria',    tipo: 'memory',     icono: '🧠',  colorAcento: '#00bcd4' },
+  { id: 'mapa',      label: 'MemoryMap',  tipo: 'memory',     icono: '🗺️',  colorAcento: '#9c27b0' },
+  { id: 'yeyonet',   label: 'YeyoNet',    tipo: 'network',    icono: '🌐',  colorAcento: '#00e676' },
 ];
 
-type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | null;
+type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | 'mapa' | 'yeyonet' | null;
 
 // ─── Workspace Router ──────────────────────────────────────────────────────────
-function WorkspaceRouter({ nodeId, onClose }: { nodeId: WorkspaceId; onClose: () => void }) {
+function WorkspaceRouter({
+  nodeId,
+  onClose,
+  imageMessages,
+  imageGallery,
+  onImageChatSend,
+  onImageAssistantMessage,
+  codeMessages,
+  onCodeChatSend,
+  videoClips,
+  videoMessages,
+  onVideoClipAdd,
+  onVideoChatSend,
+}: {
+  nodeId: WorkspaceId;
+  onClose: () => void;
+  imageMessages: ImageChatMessage[];
+  imageGallery: ImageGenerada[];
+  onImageChatSend: (mensaje: string) => void;
+  onImageAssistantMessage: (mensaje: string) => void;
+  codeMessages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>;
+  onCodeChatSend: (mensaje: string) => void;
+  videoClips: import('@/components/nodes/VideoNodeLayout').ClipInfo[];
+  videoMessages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>;
+  onVideoClipAdd: (clip: import('@/components/nodes/VideoNodeLayout').ClipInfo) => void;
+  onVideoChatSend: (mensaje: string) => void;
+}){
   if (!nodeId) return null;
 
   const closeButton = (
@@ -68,10 +103,21 @@ function WorkspaceRouter({ nodeId, onClose }: { nodeId: WorkspaceId; onClose: ()
   );
 
   switch (nodeId) {
-    case 'imagen':     return wrapper(<ImageNodeLayout />);
-    case 'video':      return wrapper(<VideoNodeLayout />);
-    case 'codigo':     return wrapper(<CodeNodeLayout />);
+    case 'imagen':
+      return wrapper(
+        <ImageNodeLayout
+          imagenes={imageGallery}
+          chatMessages={imageMessages}
+          onChatSend={onImageChatSend}
+          onAssistantMessage={onImageAssistantMessage}
+        />
+      );
+    case 'video':      return wrapper(<VideoNodeLayout clips={videoClips} chatMessages={videoMessages} onClipAdd={onVideoClipAdd} onChatSend={onVideoChatSend} />);
+    case 'codigo':     return wrapper(<CodeNodeLayout chatMessages={codeMessages} onChatSend={onCodeChatSend} />);
     case 'automacion': return wrapper(<AutomationNodeLayout />);
+    case 'memoria':    return wrapper(<MemoryNodeLayout />);
+    case 'mapa':       return wrapper(<MemoryMapLayout />);
+    case 'yeyonet':    return wrapper(<YeyoNetNodeLayout />);
     default:           return null;
   }
 }
@@ -82,12 +128,20 @@ function HubPrincipal() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(null);
   const [tabs, setTabs] = useState<TabInfo[]>([]);
+  const [imageMessages, setImageMessages] = useState<ImageChatMessage[]>([]);
+  const [imageGallery, setImageGallery] = useState<ImageGenerada[]>([]);
+  const [codeMessages, setCodeMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([]);
+  const [videoClips, setVideoClips] = useState<import('@/components/nodes/VideoNodeLayout').ClipInfo[]>([]);
+  const [videoMessages, setVideoMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([]);
 
   const WORKSPACE_LABELS: Record<string, { label: string; icono: string }> = {
     imagen:     { label: 'Imagen',      icono: '🖼️' },
     video:      { label: 'Video',       icono: '🎬' },
     codigo:     { label: 'Código',      icono: '💻' },
     automacion: { label: 'Automatizar', icono: '⚡' },
+    memoria:    { label: 'Memoria',     icono: '🧠' },
+    mapa:       { label: 'MemoryMap',   icono: '🗺️' },
+    yeyonet:    { label: 'YeyoNet',     icono: '🌐' },
   };
 
   const abrirNodo = useCallback((nodeId: string) => {
@@ -96,12 +150,7 @@ function HubPrincipal() {
       useChatStore.getState().setPanelOpen(true);
       return;
     }
-    // Memoria: abrir panel lateral de chat (por ahora)
-    if (nodeId === 'memoria') {
-      useChatStore.getState().setPanelOpen(true);
-      return;
-    }
-    if (!['imagen', 'video', 'codigo', 'automacion'].includes(nodeId)) return;
+    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria', 'mapa', 'yeyonet'].includes(nodeId)) return;
     const ws = nodeId as WorkspaceId;
     setActiveWorkspace(ws);
     const info = WORKSPACE_LABELS[nodeId];
@@ -136,6 +185,122 @@ function HubPrincipal() {
     id: n.id, label: n.label, icono: n.icono, estado: 'idle',
   }));
 
+  const appendImageMessage = useCallback((role: 'user' | 'assistant', content: string) => {
+    setImageMessages(prev => ([
+      ...prev,
+      {
+        id: `image-chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        role,
+        content,
+      },
+    ]));
+  }, []);
+
+  // ImageNodeLayout handles ALL generation directly to localhost:8000 (no proxy).
+  // page.tsx only manages chat message display.
+
+  const handleImageChatSend = useCallback((mensaje: string) => {
+    appendImageMessage('user', mensaje);
+  }, [appendImageMessage]);
+
+  const handleImageAssistantMessage = useCallback((mensaje: string) => {
+    appendImageMessage('assistant', mensaje);
+  }, [appendImageMessage]);
+
+  const handleCodeChatSend = useCallback(async (mensaje: string) => {
+    const userMsg = { id: `code-${Date.now()}`, role: 'user' as const, content: mensaje };
+    const loadingId = `code-loading-${Date.now()}`;
+    const loadingMsg = { id: loadingId, role: 'assistant' as const, content: '🤔 Analizando...' };
+    setCodeMessages(prev => [...prev, userMsg, loadingMsg]);
+    try {
+      // Build history for planner context
+      const recentHistory = codeMessages.slice(-6).map(m => ({
+        role: m.role, content: m.content,
+      }));
+
+      const res = await fetch('http://localhost:8000/api/v1/code/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: mensaje, history: recentHistory }),
+      });
+      const data = await res.json();
+
+      // Planner needs more info — show questions
+      if (data?.type === 'question') {
+        setCodeMessages(prev => prev.map(m =>
+          m.id === loadingId ? { ...m, content: data.message } : m
+        ));
+        return;
+      }
+
+      // Dojo generated code — show results
+      const codigo = data?.codigo || '';
+      const aprobado = data?.aprobado ?? false;
+      const lang = data?.lenguaje || 'python';
+
+      let content = '';
+      if (codigo) {
+        content += `\`\`\`${lang}\n${codigo}\n\`\`\`\n`;
+      }
+
+      const astIcon = data?.ast_valido ? '✅' : '❌';
+      const testsIcon = data?.tests_pasaron ? '✅' : '❌';
+      const funcIcon = data?.func_verificado ? '✅' : '❌';
+      const estado = aprobado ? '✅ APROBADO' : '❌ RECHAZADO';
+
+      content += `${estado}`;
+      content += ` | Crítico: ${(data?.score ?? 0).toFixed(1)}/10`;
+      content += ` | Seguridad: ${(data?.score_seguridad ?? 0).toFixed(1)}/10`;
+      content += ` | Performance: ${(data?.score_performance ?? 0).toFixed(1)}/10`;
+      content += ` | AST: ${astIcon}`;
+      content += ` | Tests: ${testsIcon}`;
+      content += ` | Func: ${funcIcon}`;
+
+      if (!aprobado && data?.razon_falla) {
+        content += `\n\n⚠️ **Razón**: ${data.razon_falla}`;
+      }
+
+      if (!data?.tests_pasaron && data?.tests_output) {
+        content += `\n\n📋 **Test output**:\n\`\`\`\n${data.tests_output}\n\`\`\``;
+      }
+
+      if (!codigo && !aprobado) {
+        content = `❌ No se pudo generar código\n\n⚠️ ${data?.razon_falla || data?.detail || 'Error desconocido'}`;
+      }
+
+      setCodeMessages(prev => prev.map(m =>
+        m.id === loadingId ? { ...m, content } : m
+      ));
+    } catch (err) {
+      setCodeMessages(prev => prev.map(m =>
+        m.id === loadingId ? { ...m, content: `❌ Error: ${err}` } : m
+      ));
+    }
+  }, [codeMessages]);
+
+  const handleVideoChatSend = useCallback(async (mensaje: string) => {
+    const userMsg = { id: `video-${Date.now()}`, role: 'user' as const, content: mensaje };
+    const loadingId = `video-loading-${Date.now()}`;
+    const loadingMsg = { id: loadingId, role: 'assistant' as const, content: '⏳ Procesando...' };
+    setVideoMessages(prev => [...prev, userMsg, loadingMsg]);
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/video/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: mensaje }),
+      });
+      const data = await res.json();
+      const respuesta = data?.comando || data?.respuesta || data?.detail || 'Sin respuesta del servidor';
+      setVideoMessages(prev => prev.map(m =>
+        m.id === loadingId ? { ...m, content: respuesta } : m
+      ));
+    } catch (err) {
+      setVideoMessages(prev => prev.map(m =>
+        m.id === loadingId ? { ...m, content: `❌ Error: ${err}` } : m
+      ));
+    }
+  }, []);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: '#0a0a0f', overflow: 'hidden' }}>
       {/* TOPBAR */}
@@ -162,6 +327,16 @@ function HubPrincipal() {
             <WorkspaceRouter
               nodeId={activeWorkspace}
               onClose={() => activeWorkspace && cerrarTab(activeWorkspace)}
+              imageMessages={imageMessages}
+              imageGallery={imageGallery}
+              onImageChatSend={handleImageChatSend}
+              onImageAssistantMessage={handleImageAssistantMessage}
+              codeMessages={codeMessages}
+              onCodeChatSend={handleCodeChatSend}
+              videoClips={videoClips}
+              videoMessages={videoMessages}
+              onVideoClipAdd={(clip) => setVideoClips(prev => [...prev, clip])}
+              onVideoChatSend={handleVideoChatSend}
             />
           ) : (
             /* HUB libre — FreeCanvas con pan/zoom */

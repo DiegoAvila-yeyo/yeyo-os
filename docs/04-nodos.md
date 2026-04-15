@@ -4,7 +4,7 @@
 
 | Nodo | Función | Herramientas Backend |
 |------|---------|---------------------|
-| 🔴 YEYO (Centro) | Hub visual, chat general | Ollama, OpenClaw |
+| 🔴 YEYO (Centro) | Hub visual, chat general | Ollama, YeyoOrquestador, Flash Memory |
 | 🎨 Imagen | Generación y edición de imágenes con IA | Stable Diffusion, LLaVA |
 | 🎬 Video | Creación y edición de videos con IA | FFmpeg, moviepy |
 | 🤖 Automatización | Pipeline de contenido para redes sociales | APIs sociales, Celery |
@@ -157,7 +157,7 @@
 - Refactoring asistido
 - Generación de tests
 
-**Uso especial:** Mejorar el propio YeyoOS y OpenClaw desde dentro del sistema.
+**Uso especial:** Mejorar el propio YeyoOS desde dentro del sistema: código, agentes, memoria, quality gates y herramientas.
 
 ---
 

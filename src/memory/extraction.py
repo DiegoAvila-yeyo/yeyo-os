@@ -1,179 +1,222 @@
 """
-YeyoOS — MemoryExtractor (Extracción de Memorias)
-Micro-fase 2.9 — Capa 2: Cerebro
+YeyoOS — MemoryExtractor (Guardado Directo de Memorias)
+Fase 3 — Arquitectura de Memoria por Namespace
 
-Analiza conversaciones usando IA para extraer información memorable:
-- Preferencias: "me gusta Python", "prefiero café"
-- Hechos: "mi nombre es Diego", "trabajo en Google"
-- Correcciones: "no, no es X, es Y"
+Guarda TODOS los mensajes del usuario directamente en Flash Memory
+sin filtros de palabras clave. El clasificador asigna el namespace.
+El clasificador de tipo determina si es preference/skill/correction/fact/conversation.
 
-Las memorias extraídas se almacenan en Flash Memory y NUNCA se borran.
+Las memorias NUNCA se borran.
 """
 
-import json
 import logging
-from typing import Optional
+import re
 
-from src.ia.interfaces import IAProvider, IAMessage
+from src.memory.flash_memory import FlashMemory
+from src.memory.pipeline_events import pipeline_buffer
 
 logger = logging.getLogger("yeyoos.extraction")
 
-# Tokens mínimos para intentar extracción
-MIN_TOKENS_FOR_EXTRACTION = 20
+# Mantener por compatibilidad con tests existentes
+MIN_TOKENS_FOR_EXTRACTION = 5
 
-EXTRACTION_PROMPT = """Analiza el siguiente intercambio de conversación y extrae información memorable.
+# Palabras de ruido puro — mensajes que no aportan información
+_NOISE_WORDS = {
+    "ok", "okey", "okay", "sí", "si", "no", "yes", "gracias", "thanks",
+    "hola", "hello", "hi", "bye", "adios", "adiós", "perfecto", "listo",
+    "bien", "bueno", "claro", "entendido", "dale", "sale", "va",
+}
 
-Mensaje del usuario: {user_message}
-Respuesta del asistente: {assistant_message}
+_QUESTION_STARTERS = {
+    "qué", "que", "cómo", "como", "cuándo", "cuando", "dónde", "donde",
+    "por", "quién", "quien", "cuál", "cual", "cuánto", "cuanto",
+    "what", "how", "when", "where", "why", "who", "which",
+    "sabes", "puedes", "podrías", "puedo", "hay", "tienes",
+}
 
-Extrae SOLO información personal o relevante. Tipos válidos:
-- "preference": gustos, preferencias del usuario (ej: "me gusta Python", "prefiero modo oscuro")
-- "fact": hechos sobre el usuario (ej: "mi nombre es Diego", "trabajo en empresa X", "tengo un gato")
-- "correction": correcciones del usuario (ej: "no, mi nombre no es Juan, es Diego")
+# ─── Patrones heurísticos para clasificar tipo de memoria ───────────────────────
 
-Responde SOLO con un JSON array. Si no hay nada memorable, responde con [].
-Formato:
-[
-  {{"content": "descripción concisa de la memoria", "type": "preference|fact|correction", "metadata": {{"original_text": "texto original del usuario"}}}}
+# PREFERENCE: gustos, preferencias, estilo personal
+_PREFERENCE_PATTERNS = [
+    r"\b(me gusta|prefiero|me encanta|odio|detesto|no me gusta|me agrada)\b",
+    r"\b(i like|i love|i hate|i prefer|i enjoy|i dislike)\b",
+    r"\b(mi favorit[oa]|my favorite|mi estilo|prefiero usar)\b",
+    r"\b(siempre uso|suelo usar|me inclino por|opto por)\b",
+    r"\b(no me convence|me parece mejor|me quedo con)\b",
 ]
 
-IMPORTANTE: Solo extrae información CLARA y EXPLÍCITA. No inventes ni asumas.
-Responde SOLO con el JSON, sin texto adicional."""
+# SKILL: conocimientos, habilidades, experiencia
+_SKILL_PATTERNS = [
+    r"\b(sé (hacer|usar|programar|configurar|diseñar|crear))\b",
+    r"\b(aprendí a|ya sé|domino|manejo|conozco)\b",
+    r"\b(tengo experiencia|trabajo con|llevo \d+ (años|meses))\b",
+    r"\b(i know how|i can|i learned|i'm experienced|i work with)\b",
+    r"\b(mi stack|mis herramientas|uso diario)\b",
+    r"\b(especializ[oa]|experto en|nivel avanzado)\b",
+]
+
+# CORRECTION: correcciones al asistente
+_CORRECTION_PATTERNS = [
+    r"\b(no[, ]+(es[oa]?|así|eso)|está mal|estás equivocad[oa]|incorrecto)\b",
+    r"\b(te equivocas|error|corrección|corrígelo|arréglalo)\b",
+    r"\b(no era|no es así|mal[, ]+es|en realidad es)\b",
+    r"\b(that'?s wrong|not correct|actually it'?s|you'?re wrong|fix that)\b",
+    r"\b(quise decir|me refiero a|lo que quiero es)\b",
+    r"\b(no[, ]+(quiero|necesito|pedí) eso)\b",
+]
+
+# Compilar patrones para rendimiento
+_PREF_RE = [re.compile(p, re.IGNORECASE) for p in _PREFERENCE_PATTERNS]
+_SKILL_RE = [re.compile(p, re.IGNORECASE) for p in _SKILL_PATTERNS]
+_CORR_RE = [re.compile(p, re.IGNORECASE) for p in _CORRECTION_PATTERNS]
+
+
+def classify_memory_type(user_message: str, assistant_message: str | None = None) -> str:
+    """
+    Clasifica el tipo de memoria basado en heurísticas del mensaje.
+    Prioridad: correction > preference > skill > fact
+    
+    correction tiene prioridad porque corregir un error es lo más valioso.
+    """
+    text = user_message.strip().lower()
+
+    # CORRECTION — máxima prioridad (evitar repetir errores)
+    for pattern in _CORR_RE:
+        if pattern.search(text):
+            return "correction"
+
+    # PREFERENCE — gustos personales
+    for pattern in _PREF_RE:
+        if pattern.search(text):
+            return "preference"
+
+    # SKILL — habilidades y conocimiento
+    for pattern in _SKILL_RE:
+        if pattern.search(text):
+            return "skill"
+
+    # FACT — default para declaraciones informativas
+    return "fact"
+
+
+def _is_noise(message: str) -> bool:
+    """Retorna True si el mensaje es ruido puro o una pregunta (no contiene hechos)."""
+    if not message or not message.strip():
+        return True
+
+    stripped = message.strip()
+
+    # Preguntas no contienen hechos sobre el usuario — no vale la pena guardarlas
+    if stripped.endswith("?"):
+        return True
+
+    words = [w.strip(".,!?¿¡").lower() for w in stripped.split()]
+    words = [w for w in words if w]
+
+    # Mensajes cortos de ruido puro
+    if len(words) <= 2 and all(w in _NOISE_WORDS for w in words):
+        return True
+
+    # Empieza con palabra interrogativa
+    if words and words[0] in _QUESTION_STARTERS:
+        return True
+
+    return False
 
 
 class MemoryExtractor:
     """
-    Extrae memorias de conversaciones usando análisis de IA.
-    Solo procesa mensajes suficientemente largos y que parezcan
-    contener información personal.
+    Guarda mensajes del usuario directamente en Flash Memory.
+    No filtra por palabras clave — guarda todo excepto ruido puro.
+    Clasifica automáticamente el tipo (preference/skill/correction/fact).
+    El NamespaceClassifier asigna el namespace en background.
     """
 
-    def __init__(self, ia_provider: IAProvider):
-        self.ia = ia_provider
+    def __init__(self, ia_provider=None):
+        # ia_provider se mantiene por compatibilidad, ya no se usa para extracción
+        self._ia = ia_provider
 
-    async def extract_from_message(
+    async def extract_and_store(
         self,
         user_message: str,
-        assistant_message: str,
-    ) -> list[dict]:
+        flash_memory: FlashMemory,
+        embedding_service=None,
+        namespace: str = "chat:usuario",
+        assistant_message: str | None = None,
+    ) -> bool:
         """
-        Analiza un intercambio user/assistant y extrae memorias.
-        Retorna lista de {content, type, metadata} o [] si no hay nada.
+        Guarda el mensaje del usuario directamente sin filtros.
+        Retorna True si se guardó, False si era ruido puro.
+        Emite eventos al pipeline_buffer para visualización en MemoryMap.
         """
-        if not await self.should_extract(user_message):
-            return []
+        pid = pipeline_buffer.new_pipeline(source="chat")
+        pipeline_buffer.emit(pid, "RECEIVED", "ok", user_message[:80],
+                             {"content": user_message[:200]})
 
-        prompt = EXTRACTION_PROMPT.format(
-            user_message=user_message,
-            assistant_message=assistant_message,
-        )
+        if _is_noise(user_message):
+            pipeline_buffer.emit(pid, "NOISE_CHECK", "skip",
+                                 "Filtrado como ruido",
+                                 {"reason": "noise"})
+            return False
+
+        pipeline_buffer.emit(pid, "NOISE_CHECK", "ok", "Mensaje significativo")
+
+        memory_type = classify_memory_type(user_message, assistant_message)
+        pipeline_buffer.emit(pid, "TYPE_CLASSIFY", "ok", f"Tipo: {memory_type}",
+                             {"type": memory_type})
+
+        embedding = None
+        if embedding_service:
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                embedding = await loop.run_in_executor(
+                    None, embedding_service.generate, user_message
+                )
+                pipeline_buffer.emit(pid, "EMBEDDING", "ok",
+                                     f"Vector generado ({len(embedding)} dims)",
+                                     {"dims": len(embedding) if embedding else 0})
+            except Exception as e:
+                pipeline_buffer.emit(pid, "EMBEDDING", "error",
+                                     f"Falló: {str(e)[:100]}",
+                                     {"error": str(e)[:200]})
+        else:
+            pipeline_buffer.emit(pid, "EMBEDDING", "skip",
+                                 "Sin servicio de embedding")
 
         try:
-            messages = [
-                IAMessage(
-                    role="system",
-                    content="Eres un extractor de información. Respondes SOLO con JSON válido.",
-                ),
-                IAMessage(role="user", content=prompt),
-            ]
-
-            response = await self.ia.chat(messages, temperature=0.1)
-            extracted = self._parse_extraction(response.content)
-
-            if extracted:
-                logger.info(f"Memorias extraídas: {len(extracted)} de mensaje")
-            return extracted
-
+            await flash_memory.store(
+                content=user_message,
+                type=memory_type,
+                metadata={"original_text": user_message, "classified_type": memory_type},
+                embedding=embedding,
+                source="chat_extraction",
+                namespace=namespace,
+            )
+            pipeline_buffer.emit(pid, "STORED", "ok",
+                                 f"Guardado en {namespace}",
+                                 {"namespace": namespace, "type": memory_type})
         except Exception as e:
-            logger.error(f"Error extrayendo memorias: {e}")
-            return []
+            pipeline_buffer.emit(pid, "STORED", "error",
+                                 f"Error al guardar: {str(e)[:100]}",
+                                 {"error": str(e)[:200]})
+            return False
+
+        logger.info(f"Memoria [{memory_type}] guardada: {user_message[:60]}")
+        return True
 
     async def should_extract(self, message: str) -> bool:
-        """
-        Determina si un mensaje vale la pena analizar para extracción.
-        Criterios:
-        - Contiene indicadores de información personal (prioridad)
-        - O mensaje > 50 tokens (suficientemente largo para intentar)
-        - Mínimo ~5 tokens para evitar ruido en frases con indicadores
-        """
-        if not message or not message.strip():
-            return False
+        """Compatibilidad con código existente — usa _is_noise internamente."""
+        return not _is_noise(message)
 
-        # Aproximación de tokens
-        token_count = max(1, len(message) // 4)
-
-        # Indicadores de información personal (heurística rápida)
-        personal_indicators = [
-            "me llamo", "mi nombre", "soy ", "trabajo en", "vivo en",
-            "me gusta", "prefiero", "mi favorit", "no me gusta",
-            "mi edad", "tengo ", "mi correo", "mi email",
-            "no, ", "en realidad", "corrección", "error",
-            "siempre ", "nunca ", "odio ", "amo ",
-            "me encanta", "detesto", "mi pasión",
-        ]
-
-        message_lower = message.lower()
-        for indicator in personal_indicators:
-            if indicator in message_lower:
-                # Requiere al menos 5 tokens para evitar ruido puro
-                if token_count >= 5:
-                    return True
-
-        # Sin indicador personal — requiere mínimo de tokens
-        if token_count < MIN_TOKENS_FOR_EXTRACTION:
-            return False
-
-        # Mensajes largos siempre se intentan extraer
-        if token_count > 50:
-            return True
-
-        return False
-
-    def _parse_extraction(self, response_text: str) -> list[dict]:
-        """
-        Parsea la respuesta del modelo a lista de memorias.
-        Maneja JSON malformado grácilmente.
-        """
-        if not response_text:
+    async def extract_from_message(self, user_message: str, assistant_message: str) -> list[dict]:
+        """Compatibilidad con código existente — retorna el mensaje como un solo hecho."""
+        if _is_noise(user_message):
             return []
+        memory_type = classify_memory_type(user_message, assistant_message)
+        return [{
+            "content": user_message,
+            "type": memory_type,
+            "metadata": {"original_text": user_message, "classified_type": memory_type},
+        }]
 
-        text = response_text.strip()
-
-        # Intentar encontrar JSON array en la respuesta
-        start = text.find("[")
-        end = text.rfind("]")
-
-        if start == -1 or end == -1 or end <= start:
-            return []
-
-        json_text = text[start:end + 1]
-
-        try:
-            parsed = json.loads(json_text)
-            if not isinstance(parsed, list):
-                return []
-
-            valid_memories = []
-            valid_types = {"preference", "fact", "correction"}
-
-            for item in parsed:
-                if not isinstance(item, dict):
-                    continue
-                if "content" not in item or "type" not in item:
-                    continue
-                if item["type"] not in valid_types:
-                    continue
-                if not item["content"] or not item["content"].strip():
-                    continue
-
-                valid_memories.append({
-                    "content": item["content"].strip(),
-                    "type": item["type"],
-                    "metadata": item.get("metadata", {}),
-                })
-
-            return valid_memories
-
-        except json.JSONDecodeError:
-            logger.warning(f"Error parseando JSON de extracción: {json_text[:100]}")
-            return []

@@ -62,14 +62,12 @@ class TestStatusEndpoint:
         response = client.get("/api/v1/status")
         assert response.json()["services"]["api"] == "up"
 
-    def test_status_pending_services(self, client):
-        """Servicios pendientes hasta Capa 2."""
+    def test_status_unconfigured_services(self, client):
+        """Sin lifespan, postgresql y ollama reportan not_configured."""
         response = client.get("/api/v1/status")
         services = response.json()["services"]
-        assert services["postgresql"] == "pending"
-        assert services["redis"] == "pending"
-        assert services["ollama"] == "pending"
-        assert services["gpu"] == "pending"
+        assert services["postgresql"] == "not_configured"
+        assert services["ollama"] == "not_configured"
 
 
 class TestCORS:

@@ -65,7 +65,7 @@ Tú: "Escribe un guión sobre blockchain"
 
 ### 3. Memoria como Ancla de Coherencia
 
-Las 5 capas de memoria previenen contradicciones:
+`Flash Memory` previene contradicciones con relevancia, asociaciones y recuperación semántica:
 
 ```
 IA dice hoy: "Tu canal tiene 5K suscriptores"
@@ -91,7 +91,7 @@ Memoria dice: "Hace 2 días reportó 4.8K suscriptores"
 | "¿Cuántos views tiene mi último video?" | "Aproximadamente 15K" (inventado) | Consulta YouTube API → "14,823 views" |
 | "¿Cuánto es 847 × 293?" | "247,871" (podría estar mal) | Ejecuta Python → "248,171" (correcto) |
 | "¿Qué hora es en Tokio?" | "Las 3pm probablemente" | Consulta API de tiempo → "15:42 JST" |
-| "¿Qué hicimos ayer?" | "Creo que trabajamos en logos" | Consulta Capa 3 → "Ayer editaste 3 videos y generaste 5 imágenes" |
+| "¿Qué hicimos ayer?" | "Creo que trabajamos en logos" | Consulta Flash Memory → "Ayer editaste 3 videos y generaste 5 imágenes" |
 
 ### 5. Niveles de Confianza
 
@@ -153,7 +153,7 @@ Tú: "Eso es incorrecto, la fecha real es 2009, no 2008"
 │                                             │
 │  1. Recibir mensaje del usuario             │
 │                                             │
-│  2. Buscar en Memoria (Capas 3, 4, 5)      │
+│  2. Buscar en Flash Memory                 │
 │     → ¿Ya sabemos algo sobre esto?          │
 │                                             │
 │  3. ¿Necesita datos reales?                 │
@@ -172,7 +172,7 @@ Tú: "Eso es incorrecto, la fecha real es 2009, no 2008"
 │                                             │
 │  7. Entregar con indicador de confianza     │
 │                                             │
-│  8. Guardar todo en Memoria                 │
+│  8. Guardar lo útil en Flash Memory         │
 └─────────────────────────────────────────────┘
 ```
 

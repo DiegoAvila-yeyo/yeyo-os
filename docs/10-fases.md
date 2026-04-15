@@ -1,316 +1,267 @@
 # 10 — Fases de Desarrollo
 
-## Visión General
+## Nuevo orden de prioridad
 
-El proyecto se divide en fases incrementales. Cada fase produce algo funcional y usable. No se avanza a la siguiente fase hasta que la actual esté estable.
+Este roadmap reemplaza la versión anterior centrada en `OpenClaw`, memoria de "5 capas" y una prioridad demasiado temprana sobre ISO/kiosk/empaquetado tipo OS.
 
----
+La regla nueva es:
 
-## Fase 0: Fundación
-
-**Objetivo:** Tener el proyecto estructurado y el entorno listo para desarrollar.
-
-- [ ] Crear repositorio Git para YeyoOS
-- [ ] Crear estructura de carpetas (backend/, frontend/, system/, docs/)
-- [ ] Configurar Docker Compose con servicios base (Postgres, Redis, Ollama)
-- [ ] Verificar que Ollama corre y responde
-- [ ] Verificar que PostgreSQL + pgvector funciona
-- [ ] Crear proyecto Next.js base
-- [ ] Crear proyecto FastAPI base
-- [ ] Configurar CI/CD básico (GitHub Actions: lint + test)
-
-**Resultado:** `docker-compose up` levanta todos los servicios.
-
-> **Nota:** YeyoOS corre como aplicación fullscreen sobre el SO host. No es necesario instalar Linux from scratch — los servicios de backend (Postgres, Redis, Ollama) se despliegan via Docker o instaladores nativos para Windows/Mac/Linux.
+> **Primero agentes útiles, memoria útil y calidad real. Después experiencia tipo OS.**
 
 ---
 
-## Fase 1: Interfaces y Contratos
+## Estado actual resumido
 
-**Objetivo:** Crear las interfaces genéricas que permiten intercambiar cualquier pieza.
-
-- [ ] Implementar interfaz `IAProvider`
-- [ ] Implementar `OllamaProvider` (primera implementación)
-- [ ] Implementar interfaz `Orquestador`
-- [ ] Implementar `OpenClawOrquestador` (primera implementación)
-- [ ] Implementar interfaz `MemoriaProvider`
-- [ ] Implementar `PostgresMemoria` (primera implementación)
-- [ ] Crear `config.py` central para seleccionar implementaciones
-- [ ] Tests unitarios para cada interfaz
-
-**Resultado:** Las piezas intercambiables están listas. Cambiar de Ollama a GPT-5 = cambiar 1 línea.
-
----
-
-## Fase 2: Sistema de Memoria
-
-**Objetivo:** Implementar las 5 capas de memoria.
-
-- [ ] Capa 1 (Flash): Variables en memoria para conversación actual
-- [ ] Capa 2 (Trabajo): Sesiones en Redis con TTL de 48 horas
-- [ ] Capa 3 (Episódica): Conversaciones en PostgreSQL con embeddings (pgvector)
-- [ ] Capa 4 (Conocimiento): Tabla de hechos en PostgreSQL con actualización automática
-- [ ] Capa 5 (Archivos): Storage con metadata y embeddings
-- [ ] Flujo de búsqueda: Flash → Trabajo → Episódica → Conocimiento → Archivos
-- [ ] Modelo de embeddings configurado (nomic-embed-text en Ollama)
-- [ ] Tests de integración para el flujo completo de memoria
-
-**Resultado:** La IA recuerda todo. "¿Qué hicimos ayer?" funciona.
+| Área | Estado |
+|---|---|
+| Interfaces base | Parcial/avanzado |
+| `OllamaProvider` | Existe |
+| `YeyoOrquestador` | Existe base sólida |
+| `Flash Memory` | Existe base, falta consolidación |
+| `Investigador` | Existe base, falta cierre de pipeline |
+| `Quality` | Existe base, falta volverla obligatoria |
+| `YeyoDojo` / `YeyoHack` | Diseño fuerte, implementación pendiente |
+| `YeyoNet` | Diseñado, pendiente |
+| UI visual completa | Parcial |
+| Experiencia tipo OS | Diferida |
 
 ---
 
-## Fase 3: Seguridad
+## Fase 0 — Alineación del repositorio
 
-**Objetivo:** Implementar todas las capas de seguridad.
+**Objetivo:** limpiar la visión y hacer consistente el proyecto.
 
-- [ ] Sistema de zonas (verde/amarillo/rojo)
-- [ ] Sandbox para ejecución de acciones de IA
-- [ ] Usuarios Linux separados (yeyo, ia-worker)
-- [ ] Log de auditoría en PostgreSQL (inmutable)
-- [ ] Atajo Ctrl+Alt+K (kill switch) — script de sistema
-- [ ] Configurar BTRFS y snapshots automáticos (cada 6 horas)
-- [ ] Tests de seguridad: verificar que zona roja bloquea siempre
+- [x] Unificar arquitectura en torno a `YeyoOrquestador` + `Flash Memory`
+- [x] Eliminar la dependencia conceptual de `OpenClaw`
+- [x] Reordenar el roadmap hacia agentes primero
+- [x] Documentar el procedimiento oficial para adoptar código de repos externos
+- [ ] Alinear el resto de los docs secundarios con la nueva arquitectura
 
-**Resultado:** La IA no puede dañar el sistema. Ctrl+Alt+K la detiene.
+**Resultado:** ya no hay dos visiones compitiendo dentro del repo.
 
 ---
 
-## Fase 4: Interfaz — Hub de Nodos
+## Fase 1 — Kernel mínimo estable
 
-**Objetivo:** La pantalla principal con los nodos flotantes.
+**Objetivo:** tener un runtime confiable para agentes locales.
 
-- [ ] Canvas principal con PixiJS (fondo oscuro, partículas sutiles)
-- [ ] Nodo central YEYO (rojo neón, glow)
-- [ ] Nodos satélite (estáticos, arrastrables, conectados con líneas)
-- [ ] Doble click → navegar a la vista del nodo
-- [ ] Creación dinámica de nodos (agregar/quitar desde la interfaz)
-- [ ] Persistencia de posiciones (guardar dónde dejaste cada nodo)
-- [ ] Responsive (funciona en diferentes resoluciones)
+- [x] Interfaces base (`src/core/interfaces.py`)
+- [x] Configuración central (`src/core/config.py`)
+- [x] `OllamaProvider` inicial
+- [x] Base de `YeyoOrquestador`
+- [ ] Tests de contratos e integración entre providers
+- [ ] Tool calling estable
+- [ ] Trazabilidad consistente por ejecución
 
-**Resultado:** Al abrir el sistema, ves tu interfaz neural. Puedes navegar a cada nodo.
-
----
-
-## Fase 5: Componentes Compartidos
-
-**Objetivo:** Crear los componentes reutilizables que usan todos los nodos.
-
-- [ ] `ChatPanel`: Interfaz de chat con historial y adjuntos
-- [ ] `MiniChat`: Chat contextual que aparece sobre un elemento
-- [ ] `FileDrop`: Zona para arrastrar imágenes/videos de referencia
-- [ ] `Pizarron`: Grid de imágenes/archivos con selección
-- [ ] `Timeline`: Línea de tiempo para video (clips arrastrables)
-- [ ] `Terminal`: Terminal embebida
-- [ ] Integración con FastAPI (WebSocket para chat en tiempo real)
-
-**Resultado:** Los bloques LEGO listos para armar cualquier nodo.
+**Resultado:** el sistema puede recibir una tarea y ejecutarla con rutas claras.
 
 ---
 
-## Fase 6: Nodo Imagen
+## Fase 2 — Flash Memory v1
 
-**Objetivo:** El primer nodo funcional completo.
+**Objetivo:** convertir la memoria en una capa realmente útil para continuidad y personalización.
 
-- [ ] Layout: Chat (izq) + Pizarrón (der)
-- [ ] Generación de imágenes con Stable Diffusion
-- [ ] Soporte para imágenes de referencia (image-to-image)
-- [ ] Mini-chat por imagen para refinamiento
-- [ ] Versionado de imágenes (v1 → v2 → v3)
-- [ ] Guardar en Capa 5 (Archivos) con metadata completa
-- [ ] LLaVA para entender referencias visuales
+- [x] Base de `Flash Memory`
+- [x] Tiers HOT/WARM/COLD
+- [x] Búsqueda semántica inicial
+- [ ] Ingestión inteligente inspirada en `mem0`
+- [ ] Reglas de qué recordar y qué no
+- [ ] Asociaciones más fuertes entre recuerdos
+- [ ] Retrieval compartido para chat, investigador y nodos
+- [ ] Tests de memoria end-to-end
 
-**Resultado:** Puedes generar y refinar imágenes conversando con la IA.
-
----
-
-## Fase 7: Nodo Video
-
-**Objetivo:** Creación y edición de video con IA.
-
-- [ ] Layout: Chat (izq) + Timeline (der)
-- [ ] Generación de clips con FFmpeg + moviepy
-- [ ] Soporte para video de referencia
-- [ ] Mini-chat por clip para refinamiento
-- [ ] Subtítulos automáticos (Whisper)
-- [ ] Narración por IA (Bark/XTTS)
-- [ ] Exportación en múltiples formatos
-- [ ] Unión de clips en video final
-
-**Resultado:** Describes un video → la IA lo genera por clips → lo refinas → exportas.
+**Resultado:** la IA recuerda lo correcto sin meter basura en contexto.
 
 ---
 
-## Fase 8: Nodo Automatización
+## Fase 3 — Investigador + anti-slop
 
-**Objetivo:** Pipeline de contenido para redes sociales.
+**Objetivo:** que Yeyo investigue, adapte y verifique antes de responder.
 
-- [ ] Integrar el código de estaciones existente
-- [ ] Visualización de pipeline (estaciones conectadas)
-- [ ] Estación Análisis (APIs de YouTube, TikTok, Instagram)
-- [ ] Estación Guiones (generación con Ollama)
-- [ ] Estación Edición (integración con Nodo Video)
-- [ ] Estación Publicación (APIs de subida)
-- [ ] Dashboard de analytics
-- [ ] Programación de publicaciones
+- [x] Base del pipeline de investigación
+- [x] Modelo de micro-tareas con DB
+- [ ] Búsqueda interna sólida
+- [ ] Búsqueda externa sólida
+- [ ] Ranking de candidatos
+- [ ] Ensamblaje adaptado al repo
+- [ ] Verificación obligatoria con ejecución real
+- [ ] Almacenamiento solo de soluciones verificadas
 
-**Resultado:** Pipeline completo: análisis → guión → edición → publicación.
-
----
-
-## Fase 9: Nodo Código
-
-**Objetivo:** Programación con IA dentro del OS.
-
-- [ ] Terminal embebida (xterm.js)
-- [ ] VS Code Server (code-server) integrado
-- [ ] Chat con contexto del código actual
-- [ ] Soporte para múltiples lenguajes
-- [ ] Git integrado
-- [ ] Ejecución de código en sandbox
-- [ ] Capacidad de mejorar el propio YeyoOS desde dentro
-
-**Resultado:** Vibe coding completo dentro del OS.
+**Resultado:** se reduce drásticamente el slop y la alucinación práctica.
 
 ---
 
-## Fase 10: Nodos Auxiliares
+## Fase 4 — Quality Kernel
 
-**Objetivo:** Completar los nodos restantes.
+**Objetivo:** que ninguna salida importante se considere válida sin pasar quality gates.
 
-- [ ] Nodo Archivos: Explorador inteligente con búsqueda semántica
-- [ ] Nodo Navegador: Chromium embebido
-- [ ] Nodo Configuración: Ajustes del sistema, selección de modelos, gestión de usuarios
+- [x] Base de utilidades en `src/quality/`
+- [ ] Score de correctitud
+- [ ] Score de seguridad
+- [ ] Score de compatibilidad con el repo
+- [ ] Indicador de confianza visible
+- [ ] Benchmarks de regresión
+- [ ] Política de rechazo si no hay evidencia suficiente
 
-**Resultado:** Todos los nodos planeados funcionan.
-
----
-
-## Fase 11: Anti-Alucinación
-
-**Objetivo:** Implementar el sistema completo de verificación.
-
-- [ ] Verificación en cadena (cada respuesta se intenta verificar)
-- [ ] Sistema multi-agente (Creador + Crítico + Verificador)
-- [ ] Memoria como ancla de coherencia
-- [ ] Niveles de confianza visibles (🟢🟡🔴)
-- [ ] Feedback loop (corrección de errores → aprendizaje)
-- [ ] Ejecución real de código en vez de "imaginar" resultados
-
-**Resultado:** La IA es honesta sobre lo que sabe y no sabe.
+**Resultado:** el sistema deja de "parecer correcto" y empieza a "ser correcto".
 
 ---
 
-## Fase 12: Linux y Empaquetado
+## Fase 5 — YeyoDojo
 
-**Objetivo:** Convertir todo en un sistema operativo real.
+**Objetivo:** equipo de agentes especializados para código, análisis y mejora continua.
 
-- [ ] Elegir base Linux (Alpine o Arch)
-- [ ] Configurar arranque directo a interfaz (Kiosk Mode)
-- [ ] Instalar drivers NVIDIA automáticamente
-- [ ] Scripts de autostart para todos los servicios (Docker)
-- [ ] Generar ISO instalable
-- [ ] Probar en QEMU / VM
-- [ ] Instalar en hardware real (la PC destino)
-- [ ] Verificar Ctrl+Alt+K funciona a nivel sistema
-- [ ] Verificar snapshots BTRFS funcionan
+- [x] Diseño conceptual del Dojo
+- [ ] Arquitecto, Backend, Frontend, Testing, Seguridad, Performance
+- [ ] Pipeline de crítica y corrección
+- [ ] Evaluación por score
+- [ ] Curación de biblioteca de referencia
+- [ ] Historial de errores aprendidos
+- [ ] Integración con benchmark
 
-**Resultado:** USB booteable → Instala → Arranca directo a YeyoOS.
+**Resultado:** agentes especializados que producen menos basura y más trabajo utilizable.
 
 ---
 
-## Fase 13: Pulido y Multi-Usuario
+## Fase 6 — YeyoHack
 
-**Objetivo:** Preparar para otros usuarios.
+**Objetivo:** auto-mejora y hardening del propio sistema.
 
-- [ ] Sistema de login / cuentas
-- [ ] Aislamiento de datos por usuario
-- [ ] Onboarding (primera experiencia)
-- [ ] Documentación de usuario
-- [ ] Instalador amigable
-- [ ] Sistema de actualización automática (pull de nuevas versiones)
+- [ ] Red-team / blue-team interno
+- [ ] Aprendizaje desde fallos reales
+- [ ] Detección de patrones de error
+- [ ] Reentrenamiento/adapters con datos curados
+- [ ] Integración con `PyTorch` + `Transformers`
 
-**Resultado:** Alguien más puede instalar y usar YeyoOS.
-
----
-
-## Fase 14: Escalamiento a Servidor
-
-**Objetivo:** Migrar de PC personal a infraestructura de servidor.
-
-- [ ] Migrar docker-compose → Kubernetes
-- [ ] Configurar load balancer
-- [ ] Auto-scaling de workers
-- [ ] Multi-GPU support
-- [ ] Monitoreo y alertas (Grafana, Prometheus)
-- [ ] Backups externos automatizados
-
-**Resultado:** YeyoOS corre en la nube, múltiples usuarios simultáneos.
+**Resultado:** el sistema aprende de sus errores sin contaminarse con outputs malos.
 
 ---
 
-## Fase 15: YEYO-PKG y Store
+## Fase 7 — YeyoNet
 
-**Objetivo:** Sistema de paquetes y marketplace de nodos.
+**Objetivo:** usar múltiples computadoras como una red privada de cómputo.
 
-- [ ] Definir formato .ypkg
-- [ ] Implementar yeyo-pkg CLI (create, build, install, remove)
-- [ ] Sistema de firma digital de paquetes
-- [ ] Pipeline de seguridad (análisis estático, sandbox testing)
-- [ ] YEYO Store (servidor central de paquetes)
-- [ ] Niveles de confianza (Oficial, Verificado, Comunidad)
-- [ ] Generación dinámica de nodos por IA
-- [ ] Auto-actualización de nodos
+- [x] Diseño conceptual documentado
+- [ ] Nodo central
+- [ ] Nodo satélite
+- [ ] Cola de trabajos pesados
+- [ ] Delegación de inferencia y generación
+- [ ] Sincronización selectiva de memoria
+- [ ] Políticas de permisos y confianza entre máquinas
 
-**Resultado:** Los usuarios pueden instalar, crear y compartir nodos.
-
----
-
-## Fase 16: Empresa y Corporativo
-
-**Objetivo:** Despliegue multi-máquina para empresas.
-
-- [ ] Arquitectura de islas independientes (cada PC aislada)
-- [ ] Guardian distribuido (seguridad centralizada)
-- [ ] Actualizaciones firmadas desde servidor central
-- [ ] VLANs y segmentación de red
-- [ ] Jerarquía departamental de privilegios
-- [ ] Auditoría centralizada
-- [ ] Compliance y políticas de retención
-
-**Resultado:** Una empresa puede desplegar YeyoOS en todas sus máquinas de forma segura.
+**Resultado:** una máquina ligera puede apoyarse en una máquina potente.
 
 ---
 
-## Fase 17: Expansión de Hardware
+## Fase 8 — Runtime de nodos y `.ypkg`
 
-**Objetivo:** Soporte para hardware especializado de IA.
+**Objetivo:** empaquetar capacidades como nodos instalables y exportables.
 
-- [ ] Soporte NPU (Intel, AMD, Qualcomm)
-- [ ] Integración con Google Coral y Hailo
-- [ ] Soporte Tenstorrent / Groq (cuando estén disponibles)
-- [ ] Multi-GPU con balanceo automático
-- [ ] Hardware Manager con auto-detección
-- [ ] GPU Scheduler con prioridades
+- [x] Base de manifiestos y builder
+- [ ] Installer real
+- [ ] Validación de permisos
+- [ ] Runtime de hooks
+- [ ] Exportar grafos como nodos
+- [ ] Firma y verificación de paquetes
 
-**Resultado:** YeyoOS aprovecha automáticamente cualquier hardware de IA disponible.
+**Resultado:** las capacidades del sistema se vuelven modulares y reutilizables.
 
 ---
 
-## Orden de Prioridad
+## Fase 9 — Nodos funcionales prioritarios
 
-```
-CRÍTICO (sin esto no funciona nada):
-  Fase 0 → Fase 1 → Fase 2 → Fase 4 → Fase 5
+**Objetivo:** construir capacidades reales encima del kernel.
 
-IMPORTANTE (funcionalidades core):
-  Fase 3 → Fase 6 → Fase 8
+### Prioridad alta
 
-VALIOSO (experiencia completa):
-  Fase 7 → Fase 9 → Fase 10 → Fase 11
+- [ ] Nodo Código
+- [ ] Nodo Investigador
+- [ ] Nodo Archivos
+- [ ] Nodo Automatización
 
-FUTURO (escalamiento):
-  Fase 12 → Fase 13 → Fase 14
+### Prioridad media
 
-EXPANSIÓN (ecosistema):
-  Fase 15 → Fase 16 → Fase 17
-```
+- [ ] Nodo Imagen
+- [ ] Nodo Video
+
+**Resultado:** el sistema ya hace trabajo real en dominios útiles.
+
+---
+
+## Fase 10 — UI visual completa
+
+**Objetivo:** llevar el runtime útil a una experiencia visual potente.
+
+- [x] Base frontend existente
+- [ ] Hub visual consolidado
+- [ ] Estados y trazas por nodo
+- [ ] Visualización de grafos
+- [ ] Indicadores de confianza y verificación
+- [ ] Gestión visual de memorias y paquetes
+
+**Resultado:** el usuario entiende qué está pasando y qué está verificado.
+
+---
+
+## Fase 11 — Multimedia y aprendizaje por nodo
+
+**Objetivo:** que Imagen y Video aprendan de referencias, feedback y resultados.
+
+- [x] Modelo conceptual de capas por nodo
+- [ ] Carga de referencias
+- [ ] Extracción de patrones
+- [ ] Feedback estructurado
+- [ ] Métricas por nodo
+- [ ] Aprendizaje específico por dominio
+
+**Resultado:** cada nodo aprende de su propio dominio, no de prompts genéricos.
+
+---
+
+## Fase 12 — Distribución de producto
+
+**Objetivo:** empaquetar y distribuir la plataforma útil.
+
+- [ ] Instaladores multiplataforma
+- [ ] Docker/Podman maduros
+- [ ] Setup reproducible
+- [ ] Actualización segura
+
+**Resultado:** otras máquinas pueden ejecutar YeyoOS con menos fricción.
+
+---
+
+## Fase 13 — Experiencia tipo OS (última)
+
+**Objetivo:** si sigue teniendo sentido, encapsular todo como experiencia tipo shell/OS.
+
+- [ ] Arranque fullscreen
+- [ ] Kiosk/shell mode
+- [ ] Empaquetado Linux dedicado
+- [ ] ISO instalable
+- [ ] Integración host más profunda
+
+**Resultado:** YeyoOS se siente como sistema operativo, pero solo después de demostrar que el núcleo vale la pena.
+
+---
+
+## Regla de avance
+
+No se avanza por estética ni por hype. Se avanza cuando una fase:
+
+1. funciona;
+2. se puede medir;
+3. mejora la calidad real del sistema.
+
+## Regla de adopción de código externo
+
+Cada fase que reutilice código de otros repos debe seguir este orden:
+
+1. identificar necesidad concreta;
+2. elegir repo y módulo exacto;
+3. validar licencia;
+4. adaptar a interfaces de YeyoOS;
+5. integrar en la carpeta destino;
+6. verificar con tests y ejecución real.
+
+El procedimiento detallado vive en `docs/02-arquitectura.md`.

@@ -34,8 +34,8 @@ class TestChatServiceBasic:
 
     def test_default_system_prompt_content(self):
         assert "YeyoOS" in DEFAULT_SYSTEM_PROMPT
-        assert "directo" in DEFAULT_SYSTEM_PROMPT
-        assert "útil" in DEFAULT_SYSTEM_PROMPT
+        assert "español" in DEFAULT_SYSTEM_PROMPT
+        assert "conciso" in DEFAULT_SYSTEM_PROMPT
 
     def test_custom_system_prompt(self, mock_ia_provider):
         service = ChatService(ia_provider=mock_ia_provider, system_prompt="Custom prompt")

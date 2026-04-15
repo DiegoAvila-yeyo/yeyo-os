@@ -8,6 +8,7 @@ Verifies all security components work together.
 import pytest
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -20,6 +21,8 @@ from src.security.audit import AuditTrail, AuditConfig
 
 class TestGuardianCompiles:
     def test_cargo_check(self):
+        if not shutil.which("cargo"):
+            pytest.skip("cargo no está instalado en este entorno")
         guardian_dir = Path(__file__).resolve().parents[2] / "rust" / "guardian"
         if not guardian_dir.exists():
             pytest.skip("Guardian directory not found")
@@ -31,6 +34,8 @@ class TestGuardianCompiles:
         assert result.returncode == 0, f"cargo check failed: {result.stderr}"
 
     def test_cargo_test(self):
+        if not shutil.which("cargo"):
+            pytest.skip("cargo no está instalado en este entorno")
         guardian_dir = Path(__file__).resolve().parents[2] / "rust" / "guardian"
         if not guardian_dir.exists():
             pytest.skip("Guardian directory not found")

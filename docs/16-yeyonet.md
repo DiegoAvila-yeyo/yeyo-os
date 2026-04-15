@@ -233,3 +233,269 @@ Funcionalidades de Capa 7:
 - **Extiende**: Flash Memory con sync bidireccional y resolución de conflictos
 - **Protegido por**: Guardian — todos los datos que entran/salen pasan por el sistema de seguridad
 - **Integrado en**: Hub principal via NetworkStatus indicator y panel de satélites
+
+---
+
+## YeyoNet Render Farm Distribuida
+
+### La Visión
+
+Conectar múltiples computadoras normales para que hagan juntas
+lo que ninguna podría sola en tiempo razonable.
+
+No se necesitan data centers ni GPUs caras.
+Cada PC de la red aporta lo que tiene: CPU, RAM, algo de GPU.
+Juntas forman una render farm privada de bajo costo.
+
+```
+Ejemplo real:
+  Generar 20 variaciones de un thumbnail
+
+  Sin YeyoNet (Mac M solo):
+    20 imágenes × 20 min = 400 minutos (6.6 horas) ❌
+
+  Con YeyoNet (Mac + Desktop i5):
+    Cada uno genera 10 imágenes en paralelo
+    Tiempo total: ~40 minutos ✅
+
+  Con YeyoNet (5 PCs normales):
+    Cada uno genera 4 imágenes
+    Tiempo total: ~16 minutos ✅
+
+  Con YeyoNet (20 nodos en red de confianza):
+    Tiempo total: ~4 minutos 🚀
+
+  Con YeyoNet (100 nodos — red pública futura):
+    Tiempo total: ~24 segundos 🚀🚀
+```
+
+### Los 4 Tipos de Trabajo Distribuible
+
+#### TIPO 1 — Generación de Imágenes (Stable Diffusion)
+
+```
+Modo A — Cola de variantes (recomendado, simple):
+  Tú pides 10 variaciones
+  YeyoNet asigna: nodo1→img1,2,3 / nodo2→img4,5,6 / nodo3→img7,8,9,10
+  Cada nodo genera sus imágenes de forma independiente
+  YeyoNet recolecta y presenta todas al usuario
+  Ganancia: lineal (N nodos = N veces más imágenes por hora)
+
+Modo B — Pasos alternados (avanzado, experimental):
+  Una sola imagen dividida entre 2 nodos
+  Nodo A: pasos impares (1,3,5,7,9,11,13,15,17,19)
+  Nodo B: pasos pares (2,4,6,8,10,12,14,16,18,20)
+  Sincronización entre cada paso via red local
+  Ganancia: ~2x en imágenes individuales
+  Requiere: latencia de red < 50ms (red local)
+  Tecnología: DistriFusion / AsyncDiff (MIT 2024)
+```
+
+#### TIPO 2 — Render de Video (FFmpeg, compositing)
+
+```
+División por segmentos temporales:
+  Video de 3 minutos → dividido en N chunks
+
+  Nodo 1: renderiza segundos 0-10   → chunk_001.mp4
+  Nodo 2: renderiza segundos 10-20  → chunk_002.mp4
+  Nodo 3: renderiza segundos 20-30  → chunk_003.mp4
+  ...
+  Nodo 18: renderiza segundos 170-180 → chunk_018.mp4
+
+  YeyoNet ensambla todos los chunks con FFmpeg:
+  → resultado_final.mp4
+
+Tiempos reales estimados (video 3 min, efectos medios):
+  1 PC (i5-8xxx):      2 horas
+  5 nodos normales:    24 minutos
+  20 nodos normales:   6 minutos
+  100 nodos:           1.2 minutos
+```
+
+#### TIPO 3 — Entrenamiento de IA (LoRA, Fine-tuning)
+
+```
+Federated Learning — privacidad total:
+  Cada nodo entrena con SUS datos locales
+  Solo se comparten los gradientes (no los datos)
+  Nadie ve los datos de nadie más
+  El modelo central mejora con el aprendizaje de todos
+
+  Ejemplo:
+  Nodo 1 (tú): entrena con tus videos de cripto
+  Nodo 2 (amigo): entrena con sus videos de fitness
+  Nodo 3 (familiar): entrena con sus recetas de cocina
+
+  Resultado: modelo que entiende los 3 temas
+  sin que nadie vea los datos de los demás
+```
+
+#### TIPO 4 — Inferencia de Texto (LLMs, Ollama)
+
+```
+Múltiples usuarios concurrentes:
+  Cada nodo atiende a un usuario diferente
+  Sin degradación de rendimiento por carga
+
+  O modelo dividido entre nodos (model parallelism):
+  Nodo 1: capas 1-16 del modelo
+  Nodo 2: capas 17-32 del modelo
+  Permite correr modelos más grandes que la VRAM individual
+```
+
+### Niveles de la Red
+
+```
+NIVEL 1 — Red Privada Personal (disponible hoy)
+  Solo tus dispositivos
+  Total control, cero privacidad comprometida
+  Caso de uso: Mac + Desktop + laptop
+
+NIVEL 2 — Red de Confianza (Capa 7)
+  Solo personas que tú invitas (familia, equipo)
+  Código de invitación YEYO-XXXX-XXXX-XXXX
+  Cada nodo acepta qué tipos de trabajo procesa
+  Remuneración: créditos internos
+
+NIVEL 3 — Red Pública Opt-in (futuro)
+  Cualquier usuario de YeyoOS
+  Opt-in explícito: tú decides si participas
+  Los datos se fragmentan y encriptan
+  Ningún nodo ve el trabajo completo
+  Sistema de créditos: ofreces cómputo, recibes cómputo
+```
+
+### El Sistema de Créditos
+
+```
+Economía interna de YeyoNet:
+
+GANAR créditos:
+  → Tu PC procesa trabajos de la red cuando está idle
+  → Mientras duermes, tu CPU trabaja para otros
+  → 1 hora de CPU i5 = ~10 créditos
+  → 1 hora de GPU GTX 1060 = ~50 créditos
+
+GASTAR créditos:
+  → Pides un render pesado a la red
+  → La red lo procesa en minutos
+  → Generar 100 imágenes = 20 créditos
+  → Render video 4K 5 min = 30 créditos
+
+Balance:
+  Si tu PC trabaja 8h mientras duermes (i5):
+  → Ganas ~80 créditos
+  → Puedes generar ~400 imágenes al día sin costo
+```
+
+### Especificaciones del Worker
+
+Cualquier PC puede ser nodo worker con:
+
+| Hardware | Tipo de trabajo | Rendimiento estimado |
+|----------|----------------|---------------------|
+| CPU i3+ / 8GB RAM | Texto, chunks de video cortos | Básico |
+| CPU i5+ / 16GB RAM | Imágenes SD, video, texto | Medio |
+| CPU i7+ / 32GB RAM | Imágenes SD xl, video 4K | Bueno |
+| GPU GTX 1060 3GB | Imágenes rápidas (20s), video | Muy bueno |
+| GPU RTX 3060 12GB | Todo, modelos grandes | Excelente |
+
+**Tu desktop (i5-8xxx, 16GB RAM) como worker:**
+```
+Generación imágenes SD 512x512:  ~6-8 min/imagen
+Generación imágenes LCM 512x512: ~1-2 min/imagen
+Render video 1080p (por minuto): ~4-6 min de render
+Texto/chat (qwen2.5:3b):         ~15 tokens/seg
+```
+
+### Arquitectura del Worker
+
+```
+WORKER (desktop u otro nodo):
+
+  yeyo-worker (proceso Python ligero)
+  ├── Registro en YeyoNet Central
+  ├── Cola de trabajos (Redis local o en memoria)
+  ├── Ejecutor de tareas:
+  │   ├── image_worker.py    → Stable Diffusion
+  │   ├── video_worker.py    → FFmpeg
+  │   ├── text_worker.py     → Ollama
+  │   └── training_worker.py → LoRA
+  ├── Monitor de recursos (CPU, RAM, GPU)
+  │   → Solo acepta trabajos si tiene recursos disponibles
+  │   → Reporta capacidad al Central cada 30s
+  └── Resultado uploader
+      → Sube resultado al Central cuando termina
+
+No requiere YeyoOS completo instalado.
+Solo Python + las librerías del tipo de trabajo que acepta.
+Instalación en un comando:
+  pip install yeyo-worker && yeyo-worker --central YEYO-XXXX-XXXX-XXXX
+```
+
+### Dashboard de la Red
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║  YeyoNet — Render Farm                    [+ Añadir nodo]   ║
+╠══════════════════════════════════════════════════════════════╣
+║  Poder total de la red:                                      ║
+║  CPU: 24 cores  │  RAM: 48GB  │  GPU: GTX 1060 3GB          ║
+╠══════════════════════════════════════════════════════════════╣
+║  NODO              ESTADO    CPU    RAM   TRABAJO ACTUAL     ║
+║  ─────────────────────────────────────────────────────────  ║
+║  🟢 Mac (tú)       activo    45%    8GB   generando img 3/5  ║
+║  🟢 Desktop i5     activo    82%    14GB  generando img 4/5  ║
+║  🟡 Laptop viaje   idle      3%     6GB   esperando trabajo  ║
+╠══════════════════════════════════════════════════════════════╣
+║  COLA DE TRABAJOS                                            ║
+║  ─────────────────────────────────────────────────────────  ║
+║  ✅ thumbnail_v1.png    Completado   Mac      2m 14s         ║
+║  ✅ thumbnail_v2.png    Completado   Desktop  3m 02s         ║
+║  ⚙️  thumbnail_v3.png    Generando   Mac      1m 30s...      ║
+║  ⚙️  thumbnail_v4.png    Generando   Desktop  0m 45s...      ║
+║  ⏳ thumbnail_v5.png    En cola     —         —              ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+### Roadmap de Implementación
+
+| Fase | Funcionalidad | Prioridad |
+|------|--------------|-----------|
+| **Ahora** | Worker básico para desktop (CPU, imágenes, video) | Alta |
+| **Capa 7** | YeyoNet Core con cola de trabajos distribuida | Alta |
+| **Capa 7** | Dashboard de la red en tiempo real | Media |
+| **Capa 7** | Sistema de créditos básico | Media |
+| **Futuro** | Pasos alternados (DistriFusion) para imágenes únicas | Baja |
+| **Futuro** | Federated Learning entre nodos | Media |
+| **Futuro** | Red pública opt-in con créditos | Baja |
+| **Futuro** | Instalador de worker en un comando | Alta |
+
+### Lo que se puede hacer HOY (sin implementar Capa 7)
+
+```
+Configuración manual para tu Mac + Desktop:
+
+1. En el Desktop instalar:
+   pip install diffusers torch accelerate
+   pip install fastapi uvicorn
+
+2. Crear un servidor worker mínimo en el Desktop:
+   → Expone POST /generate en puerto 8001
+   → Recibe prompt, genera imagen, devuelve base64
+
+3. En YeyoOS (Mac), configurar en .env:
+   WORKER_NODES=http://192.168.1.X:8001
+
+4. YeyoOS distribuye automáticamente las generaciones
+   entre localhost (Mac MPS) y el worker del Desktop (CPU)
+
+Tiempo de implementación: ~2 horas
+Mejora inmediata: 2x más imágenes por hora
+```
+
+---
+
+*Sección añadida: 2026-03-24 — Render Farm Distribuida*
+*Ver también: docs/18-capas-datos-nodos.md (Capa 7 de Automatización)*

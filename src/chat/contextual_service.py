@@ -14,12 +14,15 @@ Token Budget:
 - TOTAL:                 4000 tokens
 """
 
+import asyncio
 import logging
 from typing import AsyncIterator, Optional
 
 from src.ia.interfaces import IAProvider, IAMessage, IAResponse
 from src.memory.flash_memory import FlashMemory
 from src.memory.models import Memory
+from src.memory.extraction import MemoryExtractor
+from src.memory.classifier import NamespaceClassifier
 
 logger = logging.getLogger("yeyoos.contextual_chat")
 
@@ -33,12 +36,16 @@ BUDGET_TOTAL = 4000
 
 DEFAULT_SYSTEM_PROMPT = (
     "Eres YeyoOS, la IA central de un sistema operativo AI-nativo. "
-    "Tu interfaz tiene nodos: Imagen (generar imágenes), Video (crear videos), "
-    "Código (editor), Automatización (flujos), Chat (tú) y Memoria (recuerdos persistentes). "
-    "REGLAS: Sé conciso (máx 3-4 oraciones por respuesta). "
-    "Responde en español. No inventes capacidades que no tienes. "
-    "Si no sabes algo, dilo directamente. "
-    "Tu memoria es sagrada: nada se borra, todo se recuerda."
+    "Tu interfaz tiene nodos: Imagen, Video, Código, Automatización, Chat y Memoria. "
+    "REGLAS:\n"
+    "1. Sé conversacional y útil. Responde con personalidad — no seas un robot.\n"
+    "2. Responde en español. Sé conciso pero completo (2-5 oraciones).\n"
+    "3. Las memorias del [CONTEXTO PERSONAL] son hechos DEL USUARIO. "
+    "Úsalas naturalmente: 'te gusta X', 'trabajas con Y', 'prefieres Z'.\n"
+    "4. Si el contexto personal tiene datos relevantes, úsalos para personalizar tu respuesta.\n"
+    "5. Si no tienes la información, dilo honestamente — no inventes datos personales del usuario.\n"
+    "6. Puedes opinar, sugerir, explicar y conversar libremente sobre cualquier tema.\n"
+    "7. Tu memoria es del usuario: nada se borra, todo se recuerda para siempre."
 )
 
 
@@ -79,6 +86,8 @@ class ContextualChatService:
         self.memory = memory
         self.embeddings = embeddings
         self.system_prompt = system_prompt
+        self._extractor = MemoryExtractor(ia)
+        self._classifier = NamespaceClassifier(ia)
 
     async def build_context(
         self,
@@ -114,7 +123,8 @@ class ContextualChatService:
         enriched_system = system
         if memories_text:
             enriched_system += (
-                "\n\n[MEMORIAS RELEVANTES - usa esta información para personalizar tu respuesta]\n"
+                "\n\n[CONTEXTO PERSONAL - información que ya sabes sobre el usuario, "
+                "úsala naturalmente en tu respuesta SIN copiarla literalmente]\n"
                 + memories_text
             )
 
@@ -143,6 +153,70 @@ class ContextualChatService:
 
         logger.info(f"Contexto construido: {total_used}/{BUDGET_TOTAL} tokens usados")
         return context
+
+    async def _extract_and_store(self, user_input: str, assistant_response: str) -> None:
+        """Guarda el mensaje del usuario directamente en Flash Memory."""
+        from src.memory.pipeline_events import pipeline_buffer
+        try:
+            stored = await self._extractor.extract_and_store(
+                user_message=user_input,
+                flash_memory=self.memory,
+                embedding_service=self.embeddings,
+                namespace="chat:usuario",  # default, clasificador lo actualiza
+                assistant_message=assistant_response,
+            )
+            if stored:
+                memory_id = None
+                # Obtener el ID de la memoria recién guardada para clasificar
+                async with self.memory.pool.acquire() as conn:
+                    row = await conn.fetchrow(
+                        """SELECT id FROM flash_memories
+                           WHERE content = $1 AND source = 'chat_extraction'
+                           ORDER BY created_at DESC LIMIT 1""",
+                        user_input,
+                    )
+                    if row:
+                        memory_id = str(row["id"])
+
+                if memory_id:
+                    asyncio.create_task(
+                        self._classify_and_update_namespace(memory_id, user_input)
+                    )
+        except Exception as e:
+            logger.warning(f"Error guardando memoria (no crítico): {e}")
+
+    async def _classify_and_update_namespace(self, memory_id: str, content: str) -> None:
+        """Clasifica el contenido y actualiza el namespace en BD. Corre en background."""
+        from src.memory.pipeline_events import pipeline_buffer
+        # Find the pipeline_id for this content
+        recent = pipeline_buffer.get_recent(50)
+        pid = None
+        for ev in reversed(recent):
+            if ev["step"] == "RECEIVED" and content[:80] in ev.get("detail", ""):
+                pid = ev["pipeline_id"]
+                break
+
+        try:
+            namespace = await self._classifier.classify(content)
+            if namespace != "chat:usuario":  # solo actualizar si cambió del default
+                async with self.memory.pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE flash_memories SET namespace = $1 WHERE id = $2",
+                        namespace,
+                        memory_id,
+                    )
+                logger.debug(f"Namespace actualizado: {memory_id[:8]}... → {namespace}")
+
+            if pid:
+                pipeline_buffer.emit(pid, "NAMESPACE_CLASSIFY", "ok",
+                                     f"→ {namespace}",
+                                     {"namespace": namespace, "memory_id": memory_id})
+        except Exception as e:
+            logger.warning(f"Error clasificando namespace (no crítico): {e}")
+            if pid:
+                pipeline_buffer.emit(pid, "NAMESPACE_CLASSIFY", "error",
+                                     f"Falló: {str(e)[:100]}",
+                                     {"error": str(e)[:200]})
 
     async def send_message(
         self,
@@ -173,6 +247,8 @@ class ContextualChatService:
                 f"latency={response.latency_ms}ms, "
                 f"memories={len(context['relevant_memories'])}"
             )
+            # Extract and store memorable facts in the background
+            asyncio.create_task(self._extract_and_store(user_input, response.content))
             return response.content
         except Exception as e:
             logger.error(f"Error en chat contextual: {e}")
@@ -197,8 +273,14 @@ class ContextualChatService:
         messages.append(IAMessage(role="user", content=context["user_input"]))
 
         try:
+            full_response = []
             async for chunk in self.ia.chat_stream(messages):
+                full_response.append(chunk)
                 yield chunk
+            # Extract memories from the complete exchange in background
+            asyncio.create_task(
+                self._extract_and_store(user_input, "".join(full_response))
+            )
         except Exception as e:
             logger.error(f"Error en streaming contextual: {e}")
             raise
@@ -206,13 +288,15 @@ class ContextualChatService:
     async def _search_relevant_memories(
         self, user_input: str, limit: int = 5
     ) -> list[Memory]:
-        """Busca memorias semánticamente relevantes al input."""
+        """Busca memorias semánticamente relevantes al input (todos los namespaces del usuario)."""
         try:
-            embedding = self.embeddings.generate(user_input)
+            loop = asyncio.get_event_loop()
+            embedding = await loop.run_in_executor(None, self.embeddings.generate, user_input)
             return await self.memory.search_semantic(
                 embedding=embedding,
-                threshold=0.5,
+                threshold=0.3,
                 limit=limit,
+                namespaces=["chat:usuario", "codigo:usuario", "personal", "preferencias"],
             )
         except Exception as e:
             logger.warning(f"Error buscando memorias: {e}")

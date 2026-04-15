@@ -5,7 +5,7 @@ Micro-fase 5.17 — Capa 5: Órganos
 REST API para gestión de nodos del sistema.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 
@@ -17,6 +17,11 @@ router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
 
 # Nodos activos en memoria
 _active_nodes: dict[str, NodeBase] = {}
+
+
+async def get_node_memory_service():
+    """Placeholder — sobreescribir con dependency injection desde main.py."""
+    return None
 
 
 class OpenNodeRequest(BaseModel):
@@ -49,11 +54,19 @@ async def list_active_nodes() -> dict:
 
 
 @router.post("/{node_type}/open")
-async def open_node(node_type: str, request: OpenNodeRequest = OpenNodeRequest()) -> dict:
+async def open_node(
+    node_type: str,
+    request: OpenNodeRequest = OpenNodeRequest(),
+    memory_service=Depends(get_node_memory_service),
+) -> dict:
     try:
         node = NodeRegistry.create(node_type)
     except NodeNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+    # Inyectar memoria si está disponible
+    if memory_service:
+        node.set_memory_service(memory_service)
 
     try:
         await node.open()

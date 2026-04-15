@@ -19,6 +19,17 @@ from .interfaces import IAProvider, IAMessage, IAResponse
 class OllamaProvider(IAProvider):
     """Adaptador concreto para Ollama local."""
 
+    # Opciones seguras para GTX 1060 3GB + 16GB RAM
+    # num_ctx=4096  → KV cache ~512MB en VRAM (vs ~2GB con 32768)
+    # num_gpu=-1    → todas las capas posibles en VRAM
+    # num_predict=1024 → respuestas completas sin cortar
+    SAFE_OPTIONS = {
+        "num_ctx": 4096,
+        "num_gpu": -1,
+        "num_predict": 1024,
+        "num_thread": 6,
+    }
+
     def __init__(
         self,
         host: str | None = None,
@@ -40,138 +51,94 @@ class OllamaProvider(IAProvider):
         system: str = "",
         temperature: float = 0.7,
     ) -> IAResponse:
-        """Genera respuesta usando /api/generate con GPU scheduling."""
-        from src.core.gpu_scheduler import GPUScheduler, GPUPriority, GPUTask
+        """Genera respuesta usando /api/generate."""
+        start = time.monotonic()
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {**self.SAFE_OPTIONS, "temperature": temperature},
+        }
+        if system:
+            payload["system"] = system
 
-        # Create GPU task
-        task = GPUTask(
-            name="ollama-generate",
-            priority=GPUPriority.P2_BACKGROUND,
-            vram_needed_mb=1800,
+        response = await self.client.post(
+            f"{self.host}/api/generate",
+            json=payload,
         )
+        response.raise_for_status()
+        data = response.json()
 
-        scheduler = await GPUScheduler.get_instance()
-        task_id = await scheduler.submit(task)
+        latency = (time.monotonic() - start) * 1000
+        tokens = data.get("eval_count", 0) + data.get("prompt_eval_count", 0)
 
-        try:
-            start = time.monotonic()
-            payload = {
-                "model": self.model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {"temperature": temperature, "num_predict": 512},
-            }
-            if system:
-                payload["system"] = system
-
-            response = await self.client.post(
-                f"{self.host}/api/generate",
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            latency = (time.monotonic() - start) * 1000
-            tokens = data.get("eval_count", 0) + data.get("prompt_eval_count", 0)
-
-            return IAResponse(
-                content=data.get("response", ""),
-                model=self.model,
-                tokens_used=tokens,
-                latency_ms=round(latency, 2),
-            )
-        finally:
-            await scheduler.release(task_id, status="completed")
+        return IAResponse(
+            content=data.get("response", ""),
+            model=self.model,
+            tokens_used=tokens,
+            latency_ms=round(latency, 2),
+        )
 
     async def chat(
         self,
         messages: list[IAMessage],
         temperature: float = 0.7,
     ) -> IAResponse:
-        """Genera respuesta usando /api/chat con historial y GPU scheduling."""
-        from src.core.gpu_scheduler import GPUScheduler, GPUPriority, GPUTask
+        """Genera respuesta usando /api/chat con historial."""
+        start = time.monotonic()
+        formatted_messages = [
+            {"role": msg.role, "content": msg.content} for msg in messages
+        ]
 
-        # Create GPU task
-        task = GPUTask(
-            name="ollama-chat",
-            priority=GPUPriority.P2_BACKGROUND,
-            vram_needed_mb=1800,
+        response = await self.client.post(
+            f"{self.host}/api/chat",
+            json={
+                "model": self.model,
+                "messages": formatted_messages,
+                "stream": False,
+                "options": {**self.SAFE_OPTIONS, "temperature": temperature},
+            },
         )
+        response.raise_for_status()
+        data = response.json()
 
-        scheduler = await GPUScheduler.get_instance()
-        task_id = await scheduler.submit(task)
+        latency = (time.monotonic() - start) * 1000
+        tokens = data.get("eval_count", 0) + data.get("prompt_eval_count", 0)
 
-        try:
-            start = time.monotonic()
-            formatted_messages = [
-                {"role": msg.role, "content": msg.content} for msg in messages
-            ]
-
-            response = await self.client.post(
-                f"{self.host}/api/chat",
-                json={
-                    "model": self.model,
-                    "messages": formatted_messages,
-                    "stream": False,
-                    "options": {"temperature": temperature, "num_predict": 512},
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            latency = (time.monotonic() - start) * 1000
-            tokens = data.get("eval_count", 0) + data.get("prompt_eval_count", 0)
-
-            return IAResponse(
-                content=data.get("message", {}).get("content", ""),
-                model=self.model,
-                tokens_used=tokens,
-                latency_ms=round(latency, 2),
-            )
-        finally:
-            await scheduler.release(task_id, status="completed")
+        return IAResponse(
+            content=data.get("message", {}).get("content", ""),
+            model=self.model,
+            tokens_used=tokens,
+            latency_ms=round(latency, 2),
+        )
 
     async def chat_stream(
         self,
         messages: list[IAMessage],
         temperature: float = 0.7,
     ) -> AsyncIterator[str]:
-        """Genera respuesta en streaming con GPU scheduling."""
-        from src.core.gpu_scheduler import GPUScheduler, GPUPriority, GPUTask
+        """Genera respuesta en streaming, yield de chunks."""
+        formatted_messages = [
+            {"role": msg.role, "content": msg.content} for msg in messages
+        ]
 
-        task = GPUTask(
-            name="ollama-chat-stream",
-            priority=GPUPriority.P2_BACKGROUND,
-            vram_needed_mb=1800,
-        )
-
-        scheduler = await GPUScheduler.get_instance()
-        task_id = await scheduler.submit(task)
-
-        try:
-            formatted_messages = [
-                {"role": msg.role, "content": msg.content} for msg in messages
-            ]
-
-            async with self.client.stream(
-                "POST",
-                f"{self.host}/api/chat",
-                json={
-                    "model": self.model,
-                    "messages": formatted_messages,
-                    "stream": True,
-                    "options": {"temperature": temperature, "num_predict": 512},
-                },
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if line.strip():
-                        data = json.loads(line)
-                        content = data.get("message", {}).get("content", "")
-                        if content:
-                            yield content
-        finally:
-            await scheduler.release(task_id, status="completed")
+        async with self.client.stream(
+            "POST",
+            f"{self.host}/api/chat",
+            json={
+                "model": self.model,
+                "messages": formatted_messages,
+                "stream": True,
+                "options": {**self.SAFE_OPTIONS, "temperature": temperature},
+            },
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if line.strip():
+                    data = json.loads(line)
+                    content = data.get("message", {}).get("content", "")
+                    if content:
+                        yield content
 
     async def get_embedding(self, text: str) -> list[float]:
         """Genera embedding usando /api/embed."""

@@ -8,8 +8,9 @@ asyncpg==0.31.0
 attrs==26.1.0
 certifi==2026.2.25
 click==8.3.1
-cuda-bindings==12.9.4
-cuda-pathfinder==1.4.3
+# PyTorch — instalar manualmente (ver instrucciones abajo):
+# pip3.11 install torch torchvision torchaudio
+# (incluye MPS para Apple Silicon automáticamente)
 filelock==3.25.2
 frozenlist==1.8.0
 fsspec==2026.2.0
@@ -29,21 +30,18 @@ mpmath==1.3.0
 multidict==6.7.1
 networkx==3.6.1
 numpy==2.4.3
-nvidia-cublas-cu12==12.8.4.1
-nvidia-cuda-cupti-cu12==12.8.90
-nvidia-cuda-nvrtc-cu12==12.8.93
-nvidia-cuda-runtime-cu12==12.8.90
-nvidia-cudnn-cu12==9.10.2.21
-nvidia-cufft-cu12==11.3.3.83
-# nvidia-cufile-cu12==1.13.1.3  # solo Linux/entornos soportados, deshabilitado en Windows
-nvidia-curand-cu12==10.3.9.90
-nvidia-cusolver-cu12==11.7.3.90
-nvidia-cusparse-cu12==12.5.8.93
-nvidia-cusparselt-cu12==0.7.1
-# nvidia-nccl-cu12==2.27.5  # solo Linux/entornos soportados, deshabilitado en Windows
-nvidia-nvjitlink-cu12==12.8.93
-# nvidia-nvshmem-cu12==3.4.5  # solo Linux/entornos soportados, deshabilitado en Windows
-nvidia-nvtx-cu12==12.8.90
+# --- Generación de imágenes y video ---
+diffusers>=0.27.0
+transformers>=4.40.0
+accelerate>=0.29.0
+Pillow>=10.0.0
+moviepy>=1.0.3
+imageio-ffmpeg>=0.4.9
+# --- Monitoreo térmico ---
+nvidia-ml-py>=12.0.0
+psutil>=5.9.0
+wmi>=1.5.1; sys_platform == "win32"
+# ------------------------------------
 packaging==26.0
 pluggy==1.6.0
 propcache==0.4.1
@@ -69,7 +67,7 @@ tokenizers==0.22.2
 torch==2.10.0
 tqdm==4.67.3
 transformers==5.3.0
-# triton==3.6.0  # solo Linux/GPU soportado, deshabilitado en Windows dev env
+triton==3.6.0
 typer==0.24.1
 typing-inspection==0.4.2
 typing_extensions==4.15.0

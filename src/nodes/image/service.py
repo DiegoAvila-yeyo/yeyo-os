@@ -127,16 +127,30 @@ class ImageGenerationNode(NodeBase):
     # ═══════════════════════════════════
 
     async def _enhance_prompt(self, prompt: str) -> dict:
-        """Usa Ollama para mejorar el prompt antes de generar."""
+        """Usa Ollama para mejorar el prompt. Inyecta conocimiento de imagen si hay memoria."""
         from src.ia.ollama_provider import OllamaProvider
+
+        # Buscar contexto relevante de imagen:conocimiento + imagen:usuario
+        memory_context = ""
+        if self._memory_service:
+            memory_context = await self._memory_service.get_image_context(prompt, limit=3)
+
+        system = (
+            "You are an expert at writing Stable Diffusion prompts. "
+            "Add details about lighting, composition, style, and quality. "
+            "Keep it under 200 words."
+        )
+        if memory_context:
+            system += (
+                "\n\n[Relevant knowledge — apply these principles]\n"
+                + memory_context
+            )
 
         provider = OllamaProvider()
         response = await provider.generate(
             prompt=f"Enhance this image generation prompt. Make it more detailed and descriptive. "
                     f"Only return the enhanced prompt, nothing else.\n\nOriginal: {prompt}",
-            system="You are an expert at writing Stable Diffusion prompts. "
-                   "Add details about lighting, composition, style, and quality. "
-                   "Keep it under 200 words.",
+            system=system,
             temperature=0.8,
         )
         return {
@@ -201,7 +215,21 @@ class ImageGenerationNode(NodeBase):
             )
             self._gallery.append(generated)
 
-            # 6. Liberar GPU para que Ollama pueda volver
+            # 6. Guardar en memoria — la IA aprende de lo que generas
+            if self._memory_service:
+                try:
+                    await self._memory_service.store_result(
+                        content=f"Prompt: {prompt} | Estilo: {style} | Prompt mejorado: {final_prompt}",
+                        namespace="imagen:usuario",
+                        memory_type="preference",
+                        source="image_generation",
+                        metadata={"prompt": prompt, "style": style, "resolution": resolution,
+                                  "enhanced_prompt": final_prompt, "image_id": generated.id},
+                    )
+                except Exception:
+                    pass  # No bloquear generación por error de memoria
+
+            # 7. Liberar GPU para que Ollama pueda volver
             await self.release_gpu()
             self._sd_pipeline = None
 
@@ -233,6 +261,7 @@ class ImageGenerationNode(NodeBase):
             )
             pipeline = pipeline.to("cuda")
             pipeline.enable_attention_slicing()
+            pipeline.enable_vae_slicing()
             return pipeline
         except ImportError:
             raise RuntimeError(
@@ -244,14 +273,23 @@ class ImageGenerationNode(NodeBase):
     ) -> bytes:
         """Ejecuta inferencia de SD y retorna bytes de imagen PNG."""
         import torch
+        from src.core.thermal_guard import get_thermal_guard
+
+        thermal = get_thermal_guard()
+        num_steps = 20
+
+        def _thermal_callback(pipe, step_index, timestep, callback_kwargs):
+            thermal.check_and_wait_async_safe(step=step_index + 1, total=num_steps)
+            return callback_kwargs
 
         with torch.no_grad():
             result = pipeline(
                 prompt=prompt,
                 width=width,
                 height=height,
-                num_inference_steps=20,
+                num_inference_steps=num_steps,
                 guidance_scale=7.5,
+                callback_on_step_end=_thermal_callback,
             )
 
         image = result.images[0]

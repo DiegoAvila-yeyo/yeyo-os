@@ -7,6 +7,7 @@ Verifica firmas, valida permisos, carga imágenes en Podman.
 """
 
 import os
+import sys
 import json
 import tarfile
 import tempfile
@@ -103,7 +104,10 @@ class PackageInstaller:
         """Extrae el contenido del .ypkg."""
         try:
             with tarfile.open(ypkg, "r:gz") as tar:
-                tar.extractall(dest, filter="data")
+                if sys.version_info >= (3, 12):
+                    tar.extractall(dest, filter="data")
+                else:
+                    tar.extractall(dest)
         except tarfile.TarError as e:
             raise InstallError(f"Error extrayendo paquete: {e}")
 

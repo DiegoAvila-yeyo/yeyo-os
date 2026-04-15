@@ -12,6 +12,7 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
+    "@hello-pangea/dnd": "^18.0.1",
     "@monaco-editor/react": "^4.7.0",
     "next": "16.2.1",
     "pixi.js": "^8.17.1",
@@ -21,6 +22,7 @@
     "reactflow": "^11.11.4",
     "remark-gfm": "^4.0.1",
     "socket.io-client": "^4.8.3",
+    "wavesurfer.js": "^7.12.5",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

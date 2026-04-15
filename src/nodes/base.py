@@ -68,10 +68,15 @@ class NodeBase(ABC):
         self._permissions_granted: set[str] = set()
         self._gpu_allocated: bool = False
         self._gpu_vram_mb: int = 0
+        self._memory_service = None  # NodeMemoryService — inyectado después de crear el nodo
 
     # ═══════════════════════════════════
     # MÉTODOS ABSTRACTOS (cada nodo implementa)
     # ═══════════════════════════════════
+
+    def set_memory_service(self, service) -> None:
+        """Inyecta el servicio de memoria del nodo (NodeMemoryService)."""
+        self._memory_service = service
 
     @abstractmethod
     async def initialize(self) -> None:

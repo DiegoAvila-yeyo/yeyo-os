@@ -11,10 +11,10 @@ Endpoints REST para funcionalidad de chat:
 - POST /api/v1/chat/{message_id}/feedback — enviar feedback
 """
 
-import asyncio
+import json
 import logging
 import uuid
-from typing import Optional, AsyncGenerator
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
@@ -22,53 +22,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger("yeyoos.api.chat")
 
-# ChatNode integration
-from src.nodes.chat.service_integration import ChatNodeService
-from src.nodes.chat.types import ChatNodeError, ErrorCode
-
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
-
-
-# ========== Error Handler ==========
-
-def _map_error_to_user_message(error_code: str) -> str:
-    """
-    Map ChatNode error codes to user-friendly messages for frontend display.
-    
-    Args:
-        error_code: ErrorCode from ChatNode
-        
-    Returns:
-        User-friendly error message (non-technical)
-    """
-    error_map = {
-        ErrorCode.ERROR_INVALID_INPUT: "El mensaje no es válido. Por favor, verifica el contenido.",
-        ErrorCode.ERROR_MESSAGE_EMPTY: "El mensaje no puede estar vacío.",
-        ErrorCode.ERROR_MESSAGE_TOO_LONG: "El mensaje es demasiado largo. Máximo 10,000 caracteres.",
-        ErrorCode.ERROR_INVALID_CONVERSATION_ID: "La conversación no existe o ha expirado.",
-        ErrorCode.ERROR_INVALID_TONE: "El tono de conversación no es válido.",
-        ErrorCode.ERROR_INVALID_TYPE: "El tipo de conversación no es válido.",
-        
-        ErrorCode.ERROR_AGENT_VALIDATION_FAILED: "La respuesta no pasó validación de calidad. Por favor, intenta de nuevo.",
-        ErrorCode.ERROR_SYSTEM_PROMPT_GENERATION: "Error al generar el contexto. Por favor, intenta de nuevo.",
-        
-        ErrorCode.ERROR_OLLAMA_UNREACHABLE: "El servicio de IA no está disponible. Por favor, intenta más tarde.",
-        ErrorCode.ERROR_OLLAMA_TIMEOUT: "La solicitud tardó demasiado. Por favor, intenta de nuevo.",
-        ErrorCode.ERROR_OLLAMA_OUT_OF_MEMORY: "El servicio de IA está sobrecargado. Por favor, intenta más tarde.",
-        ErrorCode.ERROR_OLLAMA_INVALID_RESPONSE: "Respuesta inválida del servicio de IA. Por favor, intenta de nuevo.",
-        
-        ErrorCode.ERROR_OUTPUT_VALIDATION_FAILED: "La respuesta generada no es válida. Por favor, intenta de nuevo.",
-        ErrorCode.ERROR_INVALID_CONFIDENCE: "Error de calidad en la respuesta. Por favor, intenta de nuevo.",
-        
-        ErrorCode.ERROR_DATABASE: "Error de conexión a la base de datos. Por favor, intenta más tarde.",
-        ErrorCode.ERROR_MEMORY_INJECTION: "Error al cargar el contexto. Por favor, intenta de nuevo.",
-        ErrorCode.ERROR_INTERNAL_SERVER_ERROR: "Error interno del servidor. Por favor, intenta más tarde.",
-        
-        ErrorCode.ERROR_RATE_LIMIT_EXCEEDED: "Demasiadas solicitudes. Por favor, espera un momento antes de intentar de nuevo.",
-        ErrorCode.ERROR_REQUEST_TIMEOUT: "La solicitud expiró. Por favor, intenta de nuevo.",
-    }
-    
-    return error_map.get(error_code, "Ha ocurrido un error desconocido. Por favor, intenta de nuevo.")
 
 
 # ========== Request/Response Models ==========
@@ -196,92 +150,36 @@ async def send_message_stream(
 ):
     """
     Envía un mensaje y recibe la respuesta en streaming (SSE).
-    
-    Phase 3.1.1: Integración con ChatNodeService
-    - Valida entrada
-    - Carga contexto de conversación
-    - Llama Ollama con retry
-    - Valida output
-    - Guarda en memoria
-    - Devuelve streaming SSE en tiempo real
     """
     try:
-        # Fallback if conversation manager not initialized (e.g., PostgreSQL not running)
-        if conv_manager is None:
-            logger.warning("ConversationManager not initialized, using in-memory fallback")
-            conv_id = request.conversation_id or f"conv-{uuid.uuid4().hex[:12]}"
-        else:
-            conv_id = request.conversation_id
-            if not conv_id:
-                conv_id = await conv_manager.create_conversation()
-            await conv_manager.add_message(conv_id, "user", request.message)
+        conv_id = request.conversation_id
+        if not conv_id:
+            conv_id = await conv_manager.create_conversation()
 
-        async def event_generator() -> AsyncGenerator[str, None]:
-            """
-            SSE generator con streaming real token-a-token via Ollama.
-            Formato: "data: <chunk>\n\n" por línea
-            Termina con: "data: [DONE]\n\n"
-            """
-            chat_node_service = ChatNodeService()
+        history = await conv_manager.get_history(conv_id, limit=10)
+        history_dicts = [
+            {"role": m.role, "content": m.content} for m in history
+        ]
 
-            try:
-                # Send conversation_id as first metadata chunk for frontend
-                yield f"data: METADATA:conversation_id:{conv_id}\n\n"
+        await conv_manager.add_message(conv_id, "user", request.message)
 
-                # Load real history from conv_manager (real PostgreSQL)
-                history_dicts: list = []
-                if conv_manager is not None:
-                    try:
-                        history = await conv_manager.get_history(conv_id, limit=20)
-                        history_dicts = [
-                            {"role": m.role, "content": m.content} for m in history
-                        ]
-                    except Exception as e:
-                        logger.warning(f"Could not load history for {conv_id}: {e}")
+        async def event_generator():
+            # First event: send conversation_id so frontend can persist it
+            yield f"data: {json.dumps({'type': 'conv_id', 'value': conv_id}, separators=(',', ':'))}\n\n"
 
-                # Stream tokens directly from Ollama with real history for memory
-                token_stream = chat_node_service.stream_message(
-                    message=request.message,
-                    conversation_id=conv_id,
-                    message_history=history_dicts,
-                )
+            full_response = []
+            async for chunk in chat_service.send_message_stream(
+                user_input=request.message,
+                conversation_history=history_dicts,
+                conversation_id=conv_id,
+            ):
+                full_response.append(chunk)
+                yield f"data: {chunk}\n\n"
 
-                # Drain the async generator, sending heartbeats every 3s
-                full_response_parts: list = []
-                pending = asyncio.ensure_future(token_stream.__anext__())
-                while True:
-                    done, _ = await asyncio.wait({pending}, timeout=3.0)
-                    if pending in done:
-                        try:
-                            token = pending.result()
-                        except StopAsyncIteration:
-                            break
-                        if token == "[DONE]":
-                            # Save assistant response to real DB via conv_manager
-                            if conv_manager is not None and full_response_parts:
-                                full_response = "".join(full_response_parts)
-                                try:
-                                    await conv_manager.add_message(conv_id, "assistant", full_response)
-                                except Exception as e:
-                                    logger.warning(f"Could not save assistant response: {e}")
-                            yield "data: [DONE]\n\n"
-                            return
-                        if token.startswith("ERROR:"):
-                            yield f"data: {token}\n\n"
-                            yield "data: [DONE]\n\n"
-                            return
-                        full_response_parts.append(token)
-                        yield f"data: {token}\n\n"
-                        pending = asyncio.ensure_future(token_stream.__anext__())
-                    else:
-                        # Send SSE comment as keepalive (browsers ignore these)
-                        yield ": keepalive\n\n"
-
-            except Exception as e:
-                logger.error(f"Error en event_generator: {e}", exc_info=True)
-                error_message = "Ha ocurrido un error interno. Por favor, intenta de nuevo."
-                yield f"data: ERROR:INTERNAL:{error_message}\n\n"
-                yield "data: [DONE]\n\n"
+            # Guardar respuesta completa
+            complete = "".join(full_response)
+            await conv_manager.add_message(conv_id, "assistant", complete)
+            yield f"data: [DONE]\n\n"
 
         return StreamingResponse(
             event_generator(),
@@ -293,7 +191,7 @@ async def send_message_stream(
         )
 
     except Exception as e:
-        logger.error(f"Error en send_message_stream: {e}", exc_info=True)
+        logger.error(f"Error en streaming: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

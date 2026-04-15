@@ -161,23 +161,68 @@ class CodeNode(NodeBase):
         return {"explanation": response.content.strip()}
 
     async def _generate_code(self, prompt: str, language: str) -> dict:
-        """Genera código desde prompt."""
+        """Genera código desde prompt. Enriquece el system prompt con buenas prácticas."""
         from src.ia.ollama_provider import OllamaProvider
+
+        # Buscar buenas prácticas relevantes de codigo:conocimiento + codigo:usuario
+        memory_context = ""
+        if self._memory_service:
+            memory_context = await self._memory_service.get_code_context(
+                f"{language} {prompt}", limit=3
+            )
+
+        system = f"You are a {language} expert. Return clean, working code only."
+        if memory_context:
+            system += (
+                "\n\n[Best practices to apply in your code]\n"
+                + memory_context
+            )
+
         provider = OllamaProvider()
         response = await provider.generate(
             prompt=f"Generate {language} code for: {prompt}\nReturn only the code, no explanation.",
-            system=f"You are a {language} expert. Return clean, working code only.",
+            system=system,
             temperature=0.5,
         )
-        return {"code": response.content.strip(), "language": language}
+        code = response.content.strip()
+
+        # Guardar código generado exitoso en memoria
+        if self._memory_service and code and not code.startswith("Error"):
+            try:
+                await self._memory_service.store_result(
+                    content=f"Generé código {language}: {prompt}",
+                    namespace="codigo:usuario",
+                    memory_type="skill",
+                    source="code_generation",
+                    metadata={"language": language, "prompt": prompt,
+                              "code_preview": code[:300]},
+                )
+            except Exception:
+                pass
+
+        return {"code": code, "language": language}
 
     async def _suggest_fix(self, code: str, error: str) -> dict:
-        """Sugiere fix para un error."""
+        """Sugiere fix para un error. Usa buenas prácticas de código si hay memoria."""
         from src.ia.ollama_provider import OllamaProvider
+
+        memory_context = ""
+        if self._memory_service:
+            memory_context = await self._memory_service.get_code_context(
+                error or code[:200], limit=2
+            )
+
+        system = "You are a debugging expert. Return only the fixed code."
+        if memory_context:
+            system += (
+                "\n\n[Relevant best practices]\n"
+                + memory_context
+            )
+
         provider = OllamaProvider()
         response = await provider.generate(
             prompt=f"Fix this code that has an error:\n\nCode:\n```\n{code}\n```\n\nError: {error}\n\nReturn only the fixed code.",
-            system="You are a debugging expert. Return only the fixed code.",
+            system=system,
             temperature=0.3,
         )
         return {"fixed_code": response.content.strip(), "original_error": error}

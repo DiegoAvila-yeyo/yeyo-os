@@ -229,6 +229,9 @@ async def lifespan(app: FastAPI):
             node_id = _node_identity.node_id if _node_identity else _get_fallback_node_id()
             _cloud_sync = CloudSyncService(pool, supabase_url, supabase_key, node_id)
             await _cloud_sync.start()
+            # Hook: push cada memoria nueva al cloud automáticamente
+            if _flash_memory:
+                _flash_memory.on_store(_cloud_sync.push_single)
             logger.info("  ☁️  Cloud Sync (Supabase): ✅")
         except Exception as e:
             logger.warning(f"  ☁️  Cloud Sync: ❌ ({e})")

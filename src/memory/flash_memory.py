@@ -40,10 +40,15 @@ class FlashMemory:
     def __init__(self, pool: asyncpg.Pool, cache: Optional["MemoryCache"] = None):
         self.pool = pool
         self.cache = cache  # capa HOT — opcional, degrada grácilmente sin Redis
+        self._on_store_callbacks: list = []  # Cloud sync hooks
 
     def set_cache(self, cache: "MemoryCache") -> None:
         """Inyecta el cache Redis después de la construcción."""
         self.cache = cache
+
+    def on_store(self, callback) -> None:
+        """Registra un callback async que se ejecuta tras cada store(). Para cloud sync."""
+        self._on_store_callbacks.append(callback)
 
     @classmethod
     async def create(cls, database_url: str) -> "FlashMemory":
@@ -114,7 +119,17 @@ class FlashMemory:
             )
 
         logger.info(f"Memoria almacenada: {row['id']} tipo={type} tier={row['tier']}")
-        return self._row_to_memory(row)
+        memory = self._row_to_memory(row)
+
+        # Notify cloud sync hooks (fire-and-forget)
+        for cb in self._on_store_callbacks:
+            try:
+                import asyncio
+                asyncio.create_task(cb(self._row_to_dict(row)))
+            except Exception:
+                pass
+
+        return memory
 
     async def recall(self, query: str, limit: int = 5) -> list[Memory]:
         """
@@ -463,3 +478,24 @@ class FlashMemory:
             accessed_at=row["accessed_at"],
             updated_at=row["updated_at"],
         )
+
+    @staticmethod
+    def _row_to_dict(row: asyncpg.Record) -> dict:
+        """Convierte un registro de asyncpg a dict para cloud sync."""
+        metadata = row["metadata"]
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+        return {
+            "id": str(row["id"]),
+            "content": row["content"],
+            "type": row["type"],
+            "tier": row["tier"],
+            "checksum": row["checksum"],
+            "access_count": row["access_count"],
+            "metadata": metadata if metadata else {},
+            "source": row["source"],
+            "namespace": row.get("namespace", "general"),
+            "created_at": row["created_at"],
+            "accessed_at": row["accessed_at"],
+            "updated_at": row["updated_at"],
+        }

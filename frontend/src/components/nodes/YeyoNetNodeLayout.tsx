@@ -42,7 +42,7 @@ const MODE_LABEL: Record<string, string> = {
   minimal: 'Mínimo',
 };
 
-const PERMISSIONS_ALL = ['memory_read', 'memory_write', 'compute', 'sync', 'admin'];
+const PERMISSIONS_ALL = ['chat', 'grafos', 'memoria', 'control'];
 
 // ─── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -203,9 +203,9 @@ function SatellitesTab() {
 
   const [showInvite, setShowInvite] = useState(false);
   const [invName, setInvName] = useState('');
-  const [invPerms, setInvPerms] = useState<string[]>(['memory_read', 'sync']);
-  const [invVisibility, setInvVisibility] = useState('full');
-  const [invExpiry, setInvExpiry] = useState(24);
+  const [invPerms, setInvPerms] = useState<string[]>(['chat', 'grafos', 'memoria', 'control']);
+  const [invVisibility, setInvVisibility] = useState(4);
+  const [invExpiry, setInvExpiry] = useState(7);
   const [invResult, setInvResult] = useState<{ code: string; expires_at: string } | null>(null);
   const [inviting, setInviting] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -224,12 +224,13 @@ function SatellitesTab() {
         satellite_name: invName.trim(),
         permissions: invPerms,
         visibility_level: invVisibility,
-        expires_hours: invExpiry,
+        expires_in_days: invExpiry,
       });
       setInvResult(result);
       setInvName('');
-    } catch {
-      // error handled by store
+    } catch (err) {
+      setInvResult(null);
+      alert(`Error al crear invitación: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setInviting(false);
     }
@@ -315,22 +316,23 @@ function SatellitesTab() {
                   <select
                     style={{ ...S.select, width: '100%', marginTop: 4 }}
                     value={invVisibility}
-                    onChange={e => setInvVisibility(e.target.value)}
+                    onChange={e => setInvVisibility(Number(e.target.value))}
                   >
-                    <option value="full">Completa</option>
-                    <option value="partial">Parcial</option>
-                    <option value="minimal">Mínima</option>
+                    <option value={4}>4 — Control total</option>
+                    <option value={3}>3 — Alta</option>
+                    <option value={2}>2 — Media</option>
+                    <option value={1}>1 — Mínima</option>
                   </select>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={S.mutedLabel}>Expiración (horas)</label>
+                  <label style={S.mutedLabel}>Expiración (días)</label>
                   <input
                     type="number"
                     style={{ ...S.input, marginTop: 4 }}
                     value={invExpiry}
                     onChange={e => setInvExpiry(Number(e.target.value))}
                     min={1}
-                    max={168}
+                    max={30}
                   />
                 </div>
               </div>

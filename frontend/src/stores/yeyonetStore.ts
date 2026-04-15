@@ -19,7 +19,7 @@ export interface Satellite {
     ram_gb?: number;
     gpu_name?: string;
   } | null;
-  visibility_level: string;
+  visibility_level: number;
   permissions: string[];
 }
 
@@ -90,8 +90,8 @@ interface YeyoNetState {
   createInvitation: (req: {
     satellite_name: string;
     permissions: string[];
-    visibility_level: string;
-    expires_hours: number;
+    visibility_level: number;
+    expires_in_days: number;
   }) => Promise<InviteResult>;
   cancelJob: (jobId: string) => Promise<void>;
   triggerSync: (nodeId: string) => Promise<void>;

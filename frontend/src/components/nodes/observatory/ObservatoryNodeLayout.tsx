@@ -9,6 +9,7 @@ import { GameCanvas } from './GameCanvas'
 import { StatusBoard, ObservatoryMetrics } from './StatusBoard'
 import { CharacterInfo, AgentState } from './CharacterInfo'
 import { ActivityLog } from './ActivityLog'
+import { ArenaView } from './ArenaView'
 import type { GameEvent } from './game/GameEngine'
 
 // ---------------------------------------------------------------------------
@@ -307,24 +308,7 @@ export function ObservatoryNodeLayout() {
           />
         )}
 
-        {activeTab === 'arena' && (
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexDirection: 'column',
-              gap: 12,
-            }}
-          >
-            <span style={{ fontSize: 48 }}>⚔️</span>
-            <span style={{ fontSize: 14, color: '#556' }}>Arena coming in Phase 3</span>
-            <span style={{ fontSize: 11, color: '#334' }}>
-              Agent battles, leaderboards & tournaments
-            </span>
-          </div>
-        )}
+        {activeTab === 'arena' && <ArenaView />}
 
         {activeTab === 'metrics' && <MetricsView metrics={metrics} agents={agents} />}
       </div>

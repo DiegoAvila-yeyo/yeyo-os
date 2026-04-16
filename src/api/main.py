@@ -49,6 +49,7 @@ from src.api.routes.yeyonet import router as yeyonet_router, get_invite_manager 
 from src.api.routes.cloud_sync import router as cloud_sync_router, get_cloud_sync as cloud_sync_get
 from src.api.routes.workflows import router as workflows_router
 from src.api.routes.observatory import router as observatory_router
+from src.api.routes.arena import router as arena_router
 
 logger = logging.getLogger("yeyoos.api")
 
@@ -300,6 +301,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"No se pudo inicializar Observatory: {e}")
 
+    # Initialize Arena Service
+    try:
+        from src.arena.service import ArenaService
+        _arena_service = ArenaService.get_instance()
+        logger.info("⚔️ Arena inicializada")
+    except Exception as e:
+        logger.warning(f"No se pudo inicializar Arena: {e}")
+
     yield
 
     # Shutdown
@@ -538,6 +547,7 @@ app.include_router(yeyonet_router)
 app.include_router(cloud_sync_router)
 app.include_router(workflows_router)
 app.include_router(observatory_router)
+app.include_router(arena_router)
 
 
 # ========== WebSocket ==========

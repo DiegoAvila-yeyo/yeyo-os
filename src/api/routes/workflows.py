@@ -78,19 +78,25 @@ async def list_workflows(
 async def get_node_types():
     """Return the catalogue of available node types and their categories."""
 
-    def _serialize(obj):
-        """Convert enum keys/values to plain strings for JSON transport."""
-        if isinstance(obj, dict):
-            return {str(k): _serialize(v) for k, v in obj.items()}
-        if isinstance(obj, (list, tuple)):
-            return [_serialize(i) for i in obj]
-        if hasattr(obj, "value"):
-            return obj.value
-        return obj
+    def _key(k):
+        """Turn enum keys into their plain string value."""
+        return k.value if hasattr(k, "value") else str(k)
+
+    def _cat_key(k: str) -> str:
+        """Normalise category names to snake_case ids."""
+        return k.lower().replace(" & ", "_").replace(" ", "_")
+
+    types_out = {}
+    for k, v in NODE_TYPE_INFO.items():
+        types_out[_key(k)] = v
+
+    cats_out = {}
+    for k, v in NODE_TYPE_CATEGORIES.items():
+        cats_out[_cat_key(k)] = [_key(i) for i in v]
 
     return {
-        "types": _serialize(NODE_TYPE_INFO),
-        "categories": _serialize(NODE_TYPE_CATEGORIES),
+        "types": types_out,
+        "categories": cats_out,
     }
 
 

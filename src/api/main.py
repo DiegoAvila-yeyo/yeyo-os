@@ -47,6 +47,7 @@ from src.api.routes.code import router as code_router, set_ia_provider as set_co
 from src.api.routes.video import router as video_router, get_ia_provider as video_get_ia, get_flash_memory as video_get_memory, set_video_memory_service
 from src.api.routes.yeyonet import router as yeyonet_router, get_invite_manager as yeyonet_get_invite, get_satellite_manager as yeyonet_get_sat, get_node_identity as yeyonet_get_identity, get_job_orchestrator as yeyonet_get_orchestrator, get_sync_manager as yeyonet_get_sync, get_yeyonet_client as yeyonet_get_client
 from src.api.routes.cloud_sync import router as cloud_sync_router, get_cloud_sync as cloud_sync_get
+from src.api.routes.workflows import router as workflows_router
 
 logger = logging.getLogger("yeyoos.api")
 
@@ -278,6 +279,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"No se pudo cargar modelo de código: {e}")
     logger.info("🟢 YeyoOS Backend listo")
+
+    # Initialize Workflow Service
+    try:
+        from src.workflows.service import WorkflowService
+        _workflow_service = WorkflowService.get_instance()
+        if pool:
+            await _workflow_service.set_db_pool(pool)
+        logger.info("⚙️ Workflow Orchestrator inicializado")
+    except Exception as e:
+        logger.warning(f"No se pudo inicializar Workflow Orchestrator: {e}")
 
     yield
 
@@ -515,6 +526,7 @@ app.include_router(code_router)
 app.include_router(video_router)
 app.include_router(yeyonet_router)
 app.include_router(cloud_sync_router)
+app.include_router(workflows_router)
 
 
 # ========== WebSocket ==========

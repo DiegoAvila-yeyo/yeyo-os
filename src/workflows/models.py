@@ -140,9 +140,8 @@ class WorkflowEdge:
     edge_type: str = "default"  # "default", "true", "false"
 
     def to_dict(self) -> dict:
+        """Serialize to a JSON-friendly dictionary."""
         return {
-            "id": self.id,
-            "source_id": self.source_id,
             "target_id": self.target_id,
             "label": self.label,
             "edge_type": self.edge_type,
@@ -150,8 +149,8 @@ class WorkflowEdge:
 
     @classmethod
     def from_dict(cls, data: dict) -> "WorkflowEdge":
+        """Deserialize from a dictionary."""
         return cls(
-            id=data.get("id", f"we-{uuid.uuid4().hex[:8]}"),
             source_id=data["source_id"],
             target_id=data["target_id"],
             label=data.get("label", ""),
@@ -201,10 +200,8 @@ class Workflow:
         return [n for n in (self.get_node_by_id(nid) for nid in next_ids) if n is not None]
 
     def to_dict(self) -> dict:
+        """Serialize the full workflow to a JSON-friendly dictionary."""
         return {
-            "id": self.id,
-            "name": self.name,
-            "description": self.description,
             "status": self.status.value,
             "nodes": [n.to_dict() for n in self.nodes],
             "edges": [e.to_dict() for e in self.edges],
@@ -217,8 +214,8 @@ class Workflow:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Workflow":
+        """Deserialize from a dictionary (e.g. JSON from DB or API)."""
         return cls(
-            id=data.get("id", f"wf-{uuid.uuid4().hex[:8]}"),
             name=data.get("name", "New Workflow"),
             description=data.get("description", ""),
             status=WorkflowStatus(data.get("status", "draft")),
@@ -246,8 +243,8 @@ class NodeExecutionResult:
     retry_count: int = 0
 
     def to_dict(self) -> dict:
+        """Serialize the node result to a JSON-friendly dictionary."""
         return {
-            "node_id": self.node_id,
             "node_type": self.node_type.value,
             "status": self.status.value,
             "output": self.output,
@@ -284,9 +281,8 @@ class WorkflowExecution:
         return min(self.current_node_index / self.total_nodes, 1.0)
 
     def to_dict(self) -> dict:
+        """Serialize the execution state to a JSON-friendly dictionary."""
         return {
-            "id": self.id,
-            "workflow_id": self.workflow_id,
             "workflow_name": self.workflow_name,
             "status": self.status.value,
             "node_results": [r.to_dict() for r in self.node_results],

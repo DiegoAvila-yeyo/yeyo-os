@@ -15,8 +15,8 @@ def _validate_path(path: str) -> str | None:
     """Return an error message if *path* is unsafe, else ``None``."""
     if ".." in path.split(os.sep):
         return "Path traversal detected: '..' segments are not allowed"
-    abs_path = os.path.abspath(path)
-    if not any(abs_path.startswith(root) for root in _ALLOWED_ROOTS):
+    abs_path = os.path.realpath(path)
+    if not any(abs_path.startswith(os.path.realpath(root)) for root in _ALLOWED_ROOTS):
         return f"Path is outside allowed directories: {abs_path}"
     return None
 
@@ -39,7 +39,7 @@ async def handle_file_read(config: dict, variables: dict) -> dict:
         if err:
             return {"error": err}
 
-        abs_path = os.path.abspath(path)
+        abs_path = os.path.realpath(path)
         if not os.path.isfile(abs_path):
             return {"error": f"File not found: {abs_path}"}
 
@@ -75,7 +75,7 @@ async def handle_file_write(config: dict, variables: dict) -> dict:
         if err:
             return {"error": err}
 
-        abs_path = os.path.abspath(path)
+        abs_path = os.path.realpath(path)
 
         os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 

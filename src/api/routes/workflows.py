@@ -2,7 +2,6 @@
 YeyoOS — Workflow Orchestrator API Routes
 CRUD + execution + WebSocket for workflow management.
 """
-import json
 import logging
 from typing import Optional
 
@@ -62,15 +61,7 @@ async def create_workflow(
     service: WorkflowService = Depends(get_workflow_service),
 ):
     """Create a new workflow definition."""
-    workflow = await service.create_workflow(
-        name=payload.name,
-        description=payload.description,
-        nodes=payload.nodes,
-        edges=payload.edges,
-        trigger_type=payload.trigger_type,
-        trigger_config=payload.trigger_config,
-        variables=payload.variables,
-    )
+    workflow = await service.create_workflow(payload.model_dump())
     return workflow.to_dict()
 
 
@@ -159,16 +150,6 @@ async def execute_workflow(
     return execution.to_dict()
 
 
-@router.get("/{workflow_id}/executions")
-async def list_executions(
-    workflow_id: str,
-    service: WorkflowService = Depends(get_workflow_service),
-):
-    """List all executions belonging to a workflow."""
-    executions = await service.list_executions(workflow_id)
-    return [e.to_dict() for e in executions]
-
-
 @router.get("/executions/{exec_id}")
 async def get_execution(
     exec_id: str,
@@ -179,6 +160,16 @@ async def get_execution(
     if execution is None:
         raise HTTPException(status_code=404, detail="Execution not found")
     return execution.to_dict()
+
+
+@router.get("/{workflow_id}/executions")
+async def list_executions(
+    workflow_id: str,
+    service: WorkflowService = Depends(get_workflow_service),
+):
+    """List all executions belonging to a workflow."""
+    executions = await service.get_workflow_executions(workflow_id)
+    return [e.to_dict() for e in executions]
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +185,7 @@ async def execution_ws(
     """Stream real-time execution progress to the client."""
     await websocket.accept()
     engine = service.engine
-    engine.ws_connections.setdefault(exec_id, []).append(websocket)
+    engine.add_ws_connection(exec_id, websocket)
     logger.info("WebSocket connected for execution %s", exec_id)
 
     try:
@@ -206,8 +197,4 @@ async def execution_ws(
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected for execution %s", exec_id)
     finally:
-        connections = engine.ws_connections.get(exec_id, [])
-        if websocket in connections:
-            connections.remove(websocket)
-        if not connections:
-            engine.ws_connections.pop(exec_id, None)
+        engine.remove_ws_connection(exec_id, websocket)

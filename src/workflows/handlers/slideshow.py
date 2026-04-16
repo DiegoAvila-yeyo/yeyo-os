@@ -46,7 +46,6 @@ async def handle_slideshow(config: dict, variables: dict) -> dict:
     # Fallback: build slideshow with moviepy v2
     try:
         import asyncio
-        import functools
         import tempfile
 
         import httpx

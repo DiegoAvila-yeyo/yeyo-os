@@ -53,7 +53,7 @@ class WorkflowEngine:
 
         Args:
             node_type: The NodeType this handler services.
-            handler:   An async callable ``(node, config, variables) -> Any``.
+            handler:   An async callable ``(config, variables) -> dict``.
         """
         self._handlers[node_type] = handler
         logger.debug("Registered handler for %s", node_type.value)
@@ -255,7 +255,7 @@ class WorkflowEngine:
             raise RuntimeError(
                 f"No handler registered for node type '{node.node_type.value}'"
             )
-        return await handler(node, config, execution.variables)
+        return await handler(config, execution.variables)
 
     # ------------------------------------------------------------------
     # Built-in: condition evaluation
@@ -273,7 +273,66 @@ class WorkflowEngine:
         """
         expression = config.get("expression", "False")
         try:
-            result = bool(eval(expression, {"__builtins__": {}}, variables))  # noqa: S307
+            import ast as _ast
+            import operator
+
+            _SAFE_OPS = {
+                _ast.Eq: operator.eq,
+                _ast.NotEq: operator.ne,
+                _ast.Lt: operator.lt,
+                _ast.LtE: operator.le,
+                _ast.Gt: operator.gt,
+                _ast.GtE: operator.ge,
+                _ast.And: lambda a, b: a and b,
+                _ast.Or: lambda a, b: a or b,
+                _ast.Not: operator.not_,
+                _ast.Is: operator.is_,
+                _ast.IsNot: operator.is_not,
+                _ast.In: lambda a, b: a in b,
+                _ast.NotIn: lambda a, b: a not in b,
+                _ast.Add: operator.add,
+                _ast.Sub: operator.sub,
+                _ast.Mult: operator.mul,
+            }
+
+            def _safe_eval(node: _ast.AST) -> Any:
+                if isinstance(node, _ast.Expression):
+                    return _safe_eval(node.body)
+                if isinstance(node, _ast.Constant):
+                    return node.value
+                if isinstance(node, _ast.Name):
+                    if node.id in variables:
+                        return variables[node.id]
+                    raise NameError(f"Undefined variable: {node.id}")
+                if isinstance(node, _ast.Compare):
+                    left = _safe_eval(node.left)
+                    for op, comparator in zip(node.ops, node.comparators):
+                        right = _safe_eval(comparator)
+                        fn = _SAFE_OPS.get(type(op))
+                        if fn is None:
+                            raise ValueError(f"Unsupported operator: {type(op).__name__}")
+                        if not fn(left, right):
+                            return False
+                        left = right
+                    return True
+                if isinstance(node, _ast.BoolOp):
+                    values = [_safe_eval(v) for v in node.values]
+                    fn = _SAFE_OPS[type(node.op)]
+                    result = values[0]
+                    for v in values[1:]:
+                        result = fn(result, v)
+                    return result
+                if isinstance(node, _ast.UnaryOp) and isinstance(node.op, _ast.Not):
+                    return not _safe_eval(node.operand)
+                if isinstance(node, _ast.BinOp):
+                    fn = _SAFE_OPS.get(type(node.op))
+                    if fn is None:
+                        raise ValueError(f"Unsupported binary op: {type(node.op).__name__}")
+                    return fn(_safe_eval(node.left), _safe_eval(node.right))
+                raise ValueError(f"Unsupported expression node: {type(node).__name__}")
+
+            tree = _ast.parse(expression, mode="eval")
+            result = bool(_safe_eval(tree))
         except Exception as exc:
             logger.warning("Condition eval failed (%s): %s", expression, exc)
             result = False
@@ -305,7 +364,7 @@ class WorkflowEngine:
         body_ids = config.get("loop_body", node.loop_body)
         results: list[Any] = []
 
-        for i in range(int(loop_count)):
+        for i in range(max(0, int(loop_count))):
             execution.variables["loop_index"] = i
             for body_id in body_ids:
                 body_node = workflow.get_node_by_id(body_id)
@@ -322,7 +381,7 @@ class WorkflowEngine:
                     return {"iterations": i, "results": results, "error": body_result.error}
                 results.append(body_result.output)
 
-        return {"iterations": int(loop_count), "results": results}
+        return {"iterations": max(0, int(loop_count)), "results": results}
 
     # ------------------------------------------------------------------
     # Internal: next-node resolution

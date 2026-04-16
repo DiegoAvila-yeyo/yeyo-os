@@ -52,6 +52,7 @@ from src.api.routes.lab import router as lab_router, set_db_pool as set_lab_pool
 from src.api.routes.observatory import router as observatory_router, set_db_pool as set_obs_pool, set_ia_provider as set_obs_ia, set_memory as set_obs_memory
 from src.api.routes.workshop import router as workshop_router, set_db_pool as set_workshop_pool, set_ia_provider as set_workshop_ia
 from src.api.routes.missions import router as missions_router, set_db_pool as set_missions_pool
+from src.api.routes.arena import router as arena_router, set_ia_provider as set_arena_ia, set_ws_manager as set_arena_ws
 
 logger = logging.getLogger("yeyoos.api")
 
@@ -459,6 +460,10 @@ def _wire_dependencies():
 
     app.dependency_overrides[yeyonet_get_client] = _real_yeyonet_client
 
+    # Arena dependencies — IA provider + WebSocket manager
+    set_arena_ia(_ia_provider)
+    set_arena_ws(manager)
+
 
 app = FastAPI(
     title="YeyoOS API",
@@ -571,6 +576,7 @@ app.include_router(lab_router)
 app.include_router(observatory_router)
 app.include_router(workshop_router)
 app.include_router(missions_router)
+app.include_router(arena_router)
 
 
 # ========== WebSocket ==========

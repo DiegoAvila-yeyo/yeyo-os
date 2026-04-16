@@ -22,7 +22,8 @@ export type NodeType =
   | 'network'
   | 'storyboard'
   | 'lab'
-  | 'observatory';
+  | 'observatory'
+  | 'workshop';
 
 // ─── Flash Memory Types ────────────────────────────────────────────────────────
 

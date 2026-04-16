@@ -55,6 +55,34 @@ interface BridgeMission {
   created_at?: string;
 }
 
+// ─── Arena Types ────────────────────────────────────────────────────────────────
+
+interface ArenaRound {
+  round_number: number;
+  attack_type: string;
+  attack_code: string;
+  defense_code: string;
+  attack_success: boolean;
+  defense_success: boolean;
+  severity: number;
+  red_score: number;
+  blue_score: number;
+  description: string;
+}
+
+interface ArenaSession {
+  session_id: string;
+  status: string;
+  max_rounds: number;
+  current_round: number;
+  red_score: number;
+  blue_score: number;
+  rounds: ArenaRound[];
+  learned_combos: string[];
+}
+
+type ObservatoryTab = 'town' | 'arena';
+
 export interface ObservatoryNodeLayoutProps {}
 
 // ─── Default Agents ─────────────────────────────────────────────────────────────
@@ -72,6 +100,7 @@ const DEFAULT_AGENTS: ObservatoryAgent[] = [
 
 const API_BASE = 'http://localhost:8000/api/v1/observatory';
 const MISSIONS_API = 'http://localhost:8000/api/v1/missions';
+const ARENA_API = 'http://localhost:8000/api/v1/arena';
 
 // ─── Keyframes (injected once) ──────────────────────────────────────────────────
 
@@ -104,6 +133,14 @@ function injectKeyframes() {
       0%, 100% { box-shadow: 0 0 8px 2px rgba(255,215,0,0.3); }
       50% { box-shadow: 0 0 24px 8px rgba(255,215,0,0.8); }
     }
+    @keyframes arena-pulse-red {
+      0%, 100% { box-shadow: 0 0 10px 2px rgba(255,60,60,0.3); }
+      50% { box-shadow: 0 0 30px 8px rgba(255,60,60,0.6); }
+    }
+    @keyframes arena-pulse-blue {
+      0%, 100% { box-shadow: 0 0 10px 2px rgba(60,120,255,0.3); }
+      50% { box-shadow: 0 0 30px 8px rgba(60,120,255,0.6); }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -132,6 +169,14 @@ export function ObservatoryNodeLayout(_props: ObservatoryNodeLayoutProps) {
   const [missions, setMissions] = useState<BridgeMission[]>([]);
   const [missionsOpen, setMissionsOpen] = useState(false);
   const [missionToast, setMissionToast] = useState('');
+
+  // Arena state
+  const [activeTab, setActiveTab] = useState<ObservatoryTab>('town');
+  const [arenaSession, setArenaSession] = useState<ArenaSession | null>(null);
+  const [arenaMaxRounds, setArenaMaxRounds] = useState(15);
+  const [arenaLoading, setArenaLoading] = useState(false);
+  const [arenaExpandedRound, setArenaExpandedRound] = useState<number | null>(null);
+  const arenaPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const crewPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -319,6 +364,54 @@ export function ObservatoryNodeLayout(_props: ObservatoryNodeLayoutProps) {
     }
   }, [missionToast]);
 
+  // ─── Arena functions ───────────────────────────────────────────────────────
+
+  const fetchArenaSession = useCallback(async (sessionId: string) => {
+    try {
+      const res = await fetch(`${ARENA_API}/sessions/${sessionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setArenaSession(data);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const startArenaBattle = useCallback(async () => {
+    setArenaLoading(true);
+    try {
+      const res = await fetch(`${ARENA_API}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ max_rounds: arenaMaxRounds }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setArenaSession({ ...data, rounds: [], learned_combos: [] });
+      }
+    } catch { /* ignore */ }
+    setArenaLoading(false);
+  }, [arenaMaxRounds]);
+
+  const arenaAction = useCallback(async (action: 'pause' | 'resume' | 'stop') => {
+    if (!arenaSession) return;
+    try {
+      await fetch(`${ARENA_API}/sessions/${arenaSession.session_id}/${action}`, { method: 'POST' });
+      await fetchArenaSession(arenaSession.session_id);
+    } catch { /* ignore */ }
+  }, [arenaSession, fetchArenaSession]);
+
+  // Poll arena session while running
+  useEffect(() => {
+    if (arenaSession && (arenaSession.status === 'running' || arenaSession.status === 'paused')) {
+      arenaPollRef.current = setInterval(async () => {
+        await fetchArenaSession(arenaSession.session_id);
+      }, 1000);
+    } else {
+      if (arenaPollRef.current) { clearInterval(arenaPollRef.current); arenaPollRef.current = null; }
+    }
+    return () => { if (arenaPollRef.current) { clearInterval(arenaPollRef.current); arenaPollRef.current = null; } };
+  }, [arenaSession?.session_id, arenaSession?.status, fetchArenaSession]);
+
   // ─── Filtered tasks ────────────────────────────────────────────────────────
   const filteredTasks = tasks.filter(t => {
     if (filterAgent !== 'all' && t.agent_name !== filterAgent) return false;
@@ -377,7 +470,28 @@ export function ObservatoryNodeLayout(_props: ObservatoryNodeLayoutProps) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 28 }}>🔭</span>
-          <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>OBSERVATORY TOWN</span>
+          <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>OBSERVATORY</span>
+          {/* Tab Switcher */}
+          <div style={{ display: 'flex', gap: 4, marginLeft: 12, background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 3 }}>
+            <button
+              onClick={() => setActiveTab('town')}
+              style={{
+                background: activeTab === 'town' ? 'rgba(76,175,80,0.5)' : 'transparent',
+                border: 'none', color: activeTab === 'town' ? '#fff' : '#aaa',
+                padding: '5px 14px', borderRadius: 6, cursor: 'pointer', fontWeight: 700, fontSize: 12,
+                transition: 'all 0.2s',
+              }}
+            >🏘️ Pueblo</button>
+            <button
+              onClick={() => setActiveTab('arena')}
+              style={{
+                background: activeTab === 'arena' ? 'rgba(200,50,50,0.5)' : 'transparent',
+                border: 'none', color: activeTab === 'arena' ? '#fff' : '#aaa',
+                padding: '5px 14px', borderRadius: 6, cursor: 'pointer', fontWeight: 700, fontSize: 12,
+                transition: 'all 0.2s',
+              }}
+            >⚔️ Arena</button>
+          </div>
           <span style={{ fontSize: 12, color: '#81C784', marginLeft: 8 }}>
             {agents.filter(a => a.status === 'working').length} agentes activos
           </span>
@@ -428,6 +542,7 @@ export function ObservatoryNodeLayout(_props: ObservatoryNodeLayoutProps) {
       {/* ═══ MAIN CONTENT ═══ */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
+      {activeTab === 'town' && (<>
         {/* ─── TOWN VIEW: Agent Buildings Grid ─── */}
         <div style={{
           padding: '16px 20px', flex: '0 0 auto',
@@ -703,6 +818,232 @@ export function ObservatoryNodeLayout(_props: ObservatoryNodeLayoutProps) {
             ))}
           </div>
         )}
+      </>)}
+
+      {/* ═══ ARENA VIEW ═══ */}
+      {activeTab === 'arena' && (
+        <div style={{
+          flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto',
+          background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+          padding: 20,
+        }}>
+          {/* Arena Header with score */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 30, marginBottom: 20,
+          }}>
+            {/* YeyoHack Panel */}
+            <div style={{
+              textAlign: 'center', padding: '16px 24px', borderRadius: 14,
+              background: 'rgba(200,30,30,0.15)', border: '1px solid rgba(255,60,60,0.3)',
+              boxShadow: '0 0 20px rgba(255,0,0,0.15)', minWidth: 160,
+            }}>
+              <div style={{ fontSize: 40 }}>🔴</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#ff6b6b', marginTop: 4 }}>YeyoHack</div>
+              <div style={{ fontSize: 11, color: '#e57373' }}>Red Team — Atacante</div>
+              <div style={{ fontSize: 36, fontWeight: 900, color: '#ff4444', marginTop: 8 }}>
+                {arenaSession?.red_score ?? 0}
+              </div>
+            </div>
+
+            {/* VS */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 32, fontWeight: 900, color: '#FFD700' }}>VS</div>
+              {arenaSession && (
+                <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>
+                  Ronda {arenaSession.current_round}/{arenaSession.max_rounds}
+                </div>
+              )}
+              {arenaSession && (
+                <div style={{
+                  fontSize: 11, marginTop: 4, padding: '3px 10px', borderRadius: 6, fontWeight: 700,
+                  background: arenaSession.status === 'running' ? 'rgba(76,175,80,0.3)' :
+                    arenaSession.status === 'paused' ? 'rgba(255,152,0,0.3)' :
+                    arenaSession.status === 'completed' ? 'rgba(33,150,243,0.3)' : 'rgba(100,100,100,0.3)',
+                  color: arenaSession.status === 'running' ? '#81C784' :
+                    arenaSession.status === 'paused' ? '#FFB74D' :
+                    arenaSession.status === 'completed' ? '#64B5F6' : '#aaa',
+                }}>
+                  {arenaSession.status === 'running' ? '⚡ En batalla...' :
+                   arenaSession.status === 'paused' ? '⏸ Pausado' :
+                   arenaSession.status === 'completed' ? '🏁 Finalizado' : '💤 Inactivo'}
+                </div>
+              )}
+            </div>
+
+            {/* Guardian Panel */}
+            <div style={{
+              textAlign: 'center', padding: '16px 24px', borderRadius: 14,
+              background: 'rgba(30,60,200,0.15)', border: '1px solid rgba(60,120,255,0.3)',
+              boxShadow: '0 0 20px rgba(0,100,255,0.15)', minWidth: 160,
+            }}>
+              <div style={{ fontSize: 40 }}>🔵</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#64B5F6', marginTop: 4 }}>Guardian</div>
+              <div style={{ fontSize: 11, color: '#90CAF9' }}>Blue Team — Defensor</div>
+              <div style={{ fontSize: 36, fontWeight: 900, color: '#448AFF', marginTop: 8 }}>
+                {arenaSession?.blue_score ?? 0}
+              </div>
+            </div>
+          </div>
+
+          {/* Victory Banner */}
+          {arenaSession?.status === 'completed' && (
+            <div style={{
+              textAlign: 'center', padding: '12px 20px', borderRadius: 12, marginBottom: 16,
+              background: arenaSession.red_score > arenaSession.blue_score
+                ? 'linear-gradient(135deg, rgba(200,30,30,0.3), rgba(255,60,60,0.1))'
+                : arenaSession.blue_score > arenaSession.red_score
+                  ? 'linear-gradient(135deg, rgba(30,60,200,0.3), rgba(60,120,255,0.1))'
+                  : 'linear-gradient(135deg, rgba(255,215,0,0.3), rgba(255,215,0,0.1))',
+              border: '1px solid rgba(255,215,0,0.4)',
+            }}>
+              <div style={{ fontSize: 24, fontWeight: 900 }}>
+                {arenaSession.red_score > arenaSession.blue_score ? '🔴 ¡YeyoHack gana!' :
+                 arenaSession.blue_score > arenaSession.red_score ? '🔵 ¡Guardian gana!' :
+                 '🤝 ¡Empate!'}
+              </div>
+              <div style={{ fontSize: 13, color: '#ccc', marginTop: 4 }}>
+                {arenaSession.red_score} — {arenaSession.blue_score} en {arenaSession.current_round} rondas
+              </div>
+            </div>
+          )}
+
+          {/* Controls */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 16,
+            flexWrap: 'wrap',
+          }}>
+            {/* Max rounds slider */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label style={{ fontSize: 12, color: '#aaa' }}>Rondas:</label>
+              <input
+                type="range" min={5} max={50} value={arenaMaxRounds}
+                onChange={e => setArenaMaxRounds(Number(e.target.value))}
+                disabled={arenaSession?.status === 'running'}
+                style={{ width: 100, accentColor: '#FFD700' }}
+              />
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#FFD700', minWidth: 24 }}>{arenaMaxRounds}</span>
+            </div>
+
+            <button
+              onClick={startArenaBattle}
+              disabled={arenaLoading || arenaSession?.status === 'running'}
+              style={{
+                background: 'linear-gradient(135deg, #c62828, #e53935)', border: 'none', color: '#fff',
+                padding: '8px 20px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13,
+                opacity: (arenaLoading || arenaSession?.status === 'running') ? 0.5 : 1,
+                transition: 'transform 0.15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.05)')}
+              onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+            >⚔️ {arenaSession ? 'Nueva Batalla' : 'Iniciar'}</button>
+
+            {arenaSession?.status === 'running' && (
+              <button onClick={() => arenaAction('pause')} style={{
+                background: 'rgba(255,152,0,0.3)', border: '1px solid rgba(255,152,0,0.5)', color: '#FFB74D',
+                padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13,
+              }}>⏸ Pausar</button>
+            )}
+            {arenaSession?.status === 'paused' && (
+              <button onClick={() => arenaAction('resume')} style={{
+                background: 'rgba(76,175,80,0.3)', border: '1px solid rgba(76,175,80,0.5)', color: '#81C784',
+                padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13,
+              }}>▶ Reanudar</button>
+            )}
+            {arenaSession && arenaSession.status !== 'completed' && arenaSession.status !== 'idle' && (
+              <button onClick={() => arenaAction('stop')} style={{
+                background: 'rgba(100,100,100,0.3)', border: '1px solid rgba(150,150,150,0.5)', color: '#bbb',
+                padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13,
+              }}>⏹ Detener</button>
+            )}
+          </div>
+
+          {/* Battle Log */}
+          {arenaSession && arenaSession.rounds.length > 0 && (
+            <div style={{
+              flex: 1, overflowY: 'auto', borderRadius: 12, padding: 12,
+              background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)',
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#aaa', marginBottom: 10 }}>
+                📜 Registro de Batalla ({arenaSession.rounds.length} rondas)
+              </div>
+              {[...arenaSession.rounds].reverse().map(r => (
+                <div
+                  key={r.round_number}
+                  onClick={() => setArenaExpandedRound(arenaExpandedRound === r.round_number ? null : r.round_number)}
+                  style={{
+                    marginBottom: 8, padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+                    background: r.attack_success
+                      ? 'rgba(200,30,30,0.12)' : 'rgba(30,60,200,0.12)',
+                    border: `1px solid ${r.attack_success ? 'rgba(255,60,60,0.25)' : 'rgba(60,120,255,0.25)'}`,
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: '#888', fontWeight: 700 }}>#{r.round_number}</span>
+                      <span style={{ fontSize: 16 }}>{r.attack_success ? '🔴' : '🔵'}</span>
+                      <span style={{
+                        fontSize: 11, padding: '2px 8px', borderRadius: 6, fontWeight: 600,
+                        background: r.attack_type === 'exploit' ? 'rgba(255,60,60,0.2)' : 'rgba(255,193,7,0.2)',
+                        color: r.attack_type === 'exploit' ? '#ff8a80' : '#FFD54F',
+                      }}>{r.attack_type}</span>
+                      <span style={{ fontSize: 12, color: '#ccc' }}>
+                        {r.attack_success ? 'Ataque exitoso' : 'Defensa resistió'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: '#888' }}>Severidad: {r.severity}/10</span>
+                      <span style={{ fontSize: 12, color: '#ff6b6b', fontWeight: 700 }}>{r.red_score}</span>
+                      <span style={{ fontSize: 10, color: '#666' }}>—</span>
+                      <span style={{ fontSize: 12, color: '#64B5F6', fontWeight: 700 }}>{r.blue_score}</span>
+                      <span style={{ fontSize: 12, color: '#666' }}>{arenaExpandedRound === r.round_number ? '▼' : '▶'}</span>
+                    </div>
+                  </div>
+
+                  {/* Expanded: show code */}
+                  {arenaExpandedRound === r.round_number && (
+                    <div style={{ marginTop: 10, display: 'flex', gap: 10 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#ff6b6b', marginBottom: 4 }}>🔴 Ataque:</div>
+                        <pre style={{
+                          background: 'rgba(200,30,30,0.1)', border: '1px solid rgba(255,60,60,0.2)',
+                          borderRadius: 8, padding: 10, fontSize: 11, color: '#e0e0e0',
+                          fontFamily: "'Fira Code', 'Cascadia Code', monospace",
+                          whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 200, overflow: 'auto',
+                        }}>{r.attack_code}</pre>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#64B5F6', marginBottom: 4 }}>🔵 Defensa:</div>
+                        <pre style={{
+                          background: 'rgba(30,60,200,0.1)', border: '1px solid rgba(60,120,255,0.2)',
+                          borderRadius: 8, padding: 10, fontSize: 11, color: '#e0e0e0',
+                          fontFamily: "'Fira Code', 'Cascadia Code', monospace",
+                          whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 200, overflow: 'auto',
+                        }}>{r.defense_code}</pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {(!arenaSession || arenaSession.rounds.length === 0) && !arenaLoading && (
+            <div style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              color: '#666', textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 60, marginBottom: 12 }}>⚔️</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#aaa' }}>Arena de Batalla</div>
+              <div style={{ fontSize: 13, marginTop: 6, maxWidth: 320 }}>
+                YeyoHack (Red Team) vs Guardian (Blue Team). Inicia una batalla para ver ataques y defensas en tiempo real.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       </div>
 
       {/* ═══ AGENT DIALOG (MODAL) ═══ */}

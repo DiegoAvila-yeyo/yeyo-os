@@ -41,6 +41,7 @@ import { YeyoNetNodeLayout } from '@/components/nodes/YeyoNetNodeLayout';
 import { StoryboardNodeLayout } from '@/components/nodes/StoryboardNodeLayout';
 import { LabNodeLayout } from '@/components/nodes/LabNodeLayout';
 import { ObservatoryNodeLayout } from '@/components/nodes/ObservatoryNodeLayout';
+import { WorkshopNodeLayout } from '@/components/nodes/WorkshopNodeLayout';
 import ChatPanel from '@/components/chat/ChatPanel';
 
 // ─── Nodos disponibles en el Hub ───────────────────────────────────────────────
@@ -56,9 +57,10 @@ const NODOS_HUB: NodoLibreInfo[] = [
   { id: 'storyboard', label: 'Storyboard', tipo: 'storyboard', icono: '📋', colorAcento: '#D4A847' },
   { id: 'laboratorio', label: 'Laboratorio', tipo: 'lab', icono: '🧪', colorAcento: '#2196F3' },
   { id: 'observatory', label: 'Observatory', tipo: 'observatory', icono: '🔭', colorAcento: '#4CAF50' },
+  { id: 'workshop', label: 'Workshop', tipo: 'workshop', icono: '🏗️', colorAcento: '#FF9800' },
 ];
 
-type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | 'mapa' | 'yeyonet' | 'storyboard' | 'laboratorio' | 'observatory' | null;
+type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | 'mapa' | 'yeyonet' | 'storyboard' | 'laboratorio' | 'observatory' | 'workshop' | null;
 
 // ─── Workspace Router ──────────────────────────────────────────────────────────
 function WorkspaceRouter({
@@ -127,6 +129,7 @@ function WorkspaceRouter({
     case 'storyboard': return wrapper(<StoryboardNodeLayout />);
     case 'laboratorio': return wrapper(<LabNodeLayout />);
     case 'observatory': return wrapper(<ObservatoryNodeLayout />);
+    case 'workshop':   return wrapper(<WorkshopNodeLayout />);
     default:           return null;
   }
 }
@@ -154,6 +157,7 @@ function HubPrincipal() {
     storyboard: { label: 'Storyboard',  icono: '📋' },
     laboratorio: { label: 'Laboratorio', icono: '🧪' },
     observatory: { label: 'Observatory', icono: '🔭' },
+    workshop: { label: 'Workshop', icono: '🏗️' },
   };
 
   const abrirNodo = useCallback((nodeId: string) => {
@@ -162,7 +166,7 @@ function HubPrincipal() {
       useChatStore.getState().setPanelOpen(true);
       return;
     }
-    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria', 'mapa', 'yeyonet', 'storyboard', 'laboratorio', 'observatory'].includes(nodeId)) return;
+    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria', 'mapa', 'yeyonet', 'storyboard', 'laboratorio', 'observatory', 'workshop'].includes(nodeId)) return;
     const ws = nodeId as WorkspaceId;
     setActiveWorkspace(ws);
     const info = WORKSPACE_LABELS[nodeId];

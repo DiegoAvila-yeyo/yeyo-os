@@ -31,6 +31,8 @@ class BattleRound:
     attack_duration_ms: float
     defense_duration_ms: float
     details: str
+    attack_code: str = ""
+    defense_code: str = ""
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict[str, Any]:
@@ -42,6 +44,8 @@ class BattleRound:
             "attack_duration_ms": round(self.attack_duration_ms, 2),
             "defense_duration_ms": round(self.defense_duration_ms, 2),
             "details": self.details,
+            "attack_code": self.attack_code,
+            "defense_code": self.defense_code,
             "timestamp": self.timestamp.isoformat(),
         }
 
@@ -174,11 +178,12 @@ class BattleManager:
 
                 async with ArenaSandbox(timeout=30) as sandbox:
                     # ---- Red Team attacks ----
-                    attack_result = await self.yeyohack.execute(sandbox)
+                    attack_result = await self.yeyohack.execute(sandbox, round_number=round_num)
                     attack_success = attack_result.get("success", False)
                     attack_duration = attack_result.get("duration_ms", 0.0)
                     attack_type = attack_result.get("attack_type", "unknown")
                     payload = attack_result.get("details", "")
+                    attack_code = attack_result.get("code", "")
 
                     # ---- Blue Team detects & defends ----
                     import time as _time
@@ -187,10 +192,13 @@ class BattleManager:
                     detected, detected_type = await self.guardian.detect(payload)
 
                     defense_success = False
+                    defense_code = ""
                     if detected and detected_type:
                         defense_code = await self.guardian.generate_defense(detected_type, payload)
                         defense_success = await self.guardian.validate_defense(
-                            defense_code, payload, sandbox
+                            defense_code, payload, sandbox,
+                            attack_type=detected_type,
+                            round_number=round_num,
                         )
                     defense_duration = (_time.perf_counter() - defense_start) * 1000
 
@@ -214,6 +222,8 @@ class BattleManager:
                     attack_duration_ms=attack_duration,
                     defense_duration_ms=defense_duration,
                     details=details,
+                    attack_code=attack_code,
+                    defense_code=defense_code,
                 )
                 session.rounds.append(battle_round)
 

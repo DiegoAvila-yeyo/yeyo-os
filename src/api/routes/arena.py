@@ -2,7 +2,9 @@
 YeyoOS — Arena API Routes
 FastAPI router for the YeyoHack Arena battle system.
 """
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
@@ -13,6 +15,8 @@ from src.arena.service import ArenaService, get_arena_service
 logger = logging.getLogger("yeyoos.api.arena")
 
 router = APIRouter(prefix="/api/v1/arena", tags=["arena"])
+
+_DB_PATH = Path(__file__).resolve().parent.parent.parent / "arena" / "attack_db.json"
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +90,19 @@ async def get_history(
 ) -> list[dict[str, Any]]:
     """Return round-by-round history of the current session."""
     return service.get_history()
+
+
+@router.get("/scripts", response_model=BattleResponse)
+async def get_scripts() -> BattleResponse:
+    """Return all stored attack and defense scripts from the persistent DB."""
+    try:
+        with open(_DB_PATH, "r") as f:
+            db = json.load(f)
+        return BattleResponse(ok=True, data=db, message="Scripts loaded.")
+    except FileNotFoundError:
+        return BattleResponse(ok=True, data={"attacks": [], "defenses": []}, message="No scripts yet.")
+    except json.JSONDecodeError:
+        return BattleResponse(ok=False, data={}, message="Corrupt scripts database.")
 
 
 # ---------------------------------------------------------------------------

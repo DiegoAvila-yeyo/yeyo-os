@@ -1,18 +1,30 @@
 """
 YeyoOS — Guardian (Blue Team)
 Defensive agent that monitors, detects, and generates defenses.
-Uses pattern matching and AI to create patches.
+Uses OllamaProvider for AI defense generation with template fallback.
+Persists successful defenses to attack_db.json.
 """
-import asyncio
+import json
 import logging
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from src.arena.attack_library import ATTACK_CATALOG, AttackType
 from src.arena.sandbox import ArenaSandbox, SandboxResult
 
 logger = logging.getLogger("yeyoos.arena.guardian")
+
+_DB_PATH = Path(__file__).parent / "attack_db.json"
+
+_DEFENSE_SYSTEM_PROMPT = (
+    "You are Guardian, a Blue Team security engineer. Your job is to write "
+    "Python defense scripts that detect and block security attacks. "
+    "Generate ONLY Python code, no explanations, no markdown fences. "
+    "The defense must print 'DEFENSE_BLOCKED' and call sys.exit(1) when "
+    "an attack is detected."
+)
 
 # Template-based defenses when Ollama is unavailable.
 _DEFENSE_TEMPLATES: dict[AttackType, str] = {
@@ -112,14 +124,54 @@ class Guardian:
     """Blue-team defensive agent.
 
     Detects incoming attacks via regex pattern matching and generates
-    defense code (template-based or AI-generated via Ollama).
+    defense code via OllamaProvider (with template fallback). Persists
+    successful defenses to attack_db.json.
     """
 
     def __init__(self) -> None:
         self.defense_history: list[dict[str, Any]] = []
         self.detection_patterns: dict[AttackType, list[re.Pattern[str]]] = {}
         self.active_defenses: list[str] = []
+        self._ollama: Any = None
+        self._ollama_available: Optional[bool] = None
         self._init_detection_patterns()
+
+    async def _get_ollama(self) -> Any:
+        """Lazily initialize OllamaProvider and cache availability."""
+        if self._ollama is not None:
+            return self._ollama
+        try:
+            from src.ia.ollama_provider import OllamaProvider
+            provider = OllamaProvider(model="qwen2.5-coder:7b")
+            ok = await provider.health_check()
+            if ok:
+                self._ollama = provider
+                self._ollama_available = True
+                logger.info("OllamaProvider connected for Guardian.")
+                return provider
+            self._ollama_available = False
+            await provider.close()
+        except Exception as exc:
+            logger.debug("Ollama init failed: %s", exc)
+            self._ollama_available = False
+        return None
+
+    # -- persistence -------------------------------------------------------
+
+    @staticmethod
+    def _load_db() -> dict[str, list[dict[str, Any]]]:
+        try:
+            with open(_DB_PATH, "r") as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {"attacks": [], "defenses": []}
+
+    @staticmethod
+    def _save_defense(record: dict[str, Any]) -> None:
+        db = Guardian._load_db()
+        db["defenses"].append(record)
+        with open(_DB_PATH, "w") as f:
+            json.dump(db, f, indent=2)
 
     # -- pattern init ------------------------------------------------------
 
@@ -189,21 +241,62 @@ class Guardian:
 
     # -- defense generation ------------------------------------------------
 
+    def _build_defense_prompt(self, attack_type: AttackType, payload: str) -> str:
+        """Build a prompt with template defenses as few-shot examples."""
+        template_code = _DEFENSE_TEMPLATES.get(attack_type, "")
+        examples_from_catalog = ATTACK_CATALOG.get(attack_type, [])
+
+        attack_info = ""
+        for t in examples_from_catalog[:2]:
+            attack_info += f"  - {t.name}: {t.payload_template}\n"
+
+        db = self._load_db()
+        past_defenses = [
+            d for d in db["defenses"]
+            if d.get("attack_type") == attack_type.value and d.get("success")
+        ]
+        novelty = ""
+        if past_defenses:
+            snippets = [d.get("code", "")[:200] for d in past_defenses[-3:]]
+            novelty = (
+                "\n\nPrevious successful defenses (create something different):\n"
+                + "\n---\n".join(snippets)
+            )
+
+        return (
+            f"Generate a Python defense script against: {attack_type.value}\n\n"
+            f"The attack payload is: {payload!r}\n\n"
+            f"Known attack patterns for this type:\n{attack_info}\n"
+            f"Example defense template for reference:\n```python\n{template_code}```\n"
+            f"{novelty}\n\n"
+            "Requirements:\n"
+            "- Print 'DEFENSE_BLOCKED' and sys.exit(1) if the attack is detected\n"
+            "- Must be pure Python, no external dependencies\n"
+            "- Must contain a function definition\n"
+        )
+
+    @staticmethod
+    def _extract_code(response: str) -> str:
+        """Extract Python code from AI response."""
+        match = re.search(r"```(?:python)?\s*\n(.*?)```", response, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        if "def " in response:
+            return response.strip()
+        return response.strip()
+
     async def generate_defense(
         self, attack_type: AttackType, payload: str
     ) -> str:
         """Generate Python defense code for the given attack type.
 
-        Attempts to call a local Ollama instance first; falls back to a
-        pre-built template if the AI is unavailable.
+        Attempts OllamaProvider first; falls back to a pre-built template.
         """
-        # Try Ollama (non-blocking, best-effort)
         ai_defense = await self._try_ollama_defense(attack_type, payload)
         if ai_defense:
             self.active_defenses.append(ai_defense)
             return ai_defense
 
-        # Fallback: template
         template = _DEFENSE_TEMPLATES.get(attack_type, "# No defense template available\n")
         self.active_defenses.append(template)
         return template
@@ -211,32 +304,26 @@ class Guardian:
     async def _try_ollama_defense(
         self, attack_type: AttackType, payload: str
     ) -> Optional[str]:
-        """Ask Ollama to generate a defense.  Returns ``None`` on failure."""
-        try:
-            import httpx  # noqa: F811
-        except ImportError:
+        """Ask OllamaProvider to generate a defense. Returns None on failure."""
+        provider = await self._get_ollama()
+        if provider is None:
             return None
 
-        prompt = (
-            f"Generate a short Python function that defends against a {attack_type.value} "
-            f"attack. The attack payload is: {payload!r}. "
-            "The function should print 'DEFENSE_BLOCKED' and sys.exit(1) if the "
-            "attack is detected. Return ONLY the Python code, no explanation."
-        )
-
+        prompt = self._build_defense_prompt(attack_type, payload)
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(
-                    "http://localhost:11434/api/generate",
-                    json={"model": "llama3", "prompt": prompt, "stream": False},
-                )
-                if resp.status_code == 200:
-                    code = resp.json().get("response", "")
-                    if "def " in code:
-                        logger.info("Ollama defense generated for %s", attack_type.value)
-                        return code
+            response = await provider.generate(
+                prompt=prompt,
+                system=_DEFENSE_SYSTEM_PROMPT,
+                temperature=0.7,
+            )
+            code = self._extract_code(response.content)
+            if code and "def " in code:
+                logger.info("AI defense generated for %s (%d chars)", attack_type.value, len(code))
+                return code
+            logger.warning("AI defense response did not contain a function for %s", attack_type.value)
         except Exception as exc:
-            logger.debug("Ollama unavailable (%s), using template defense.", exc)
+            logger.debug("Ollama defense generation failed: %s", exc)
+            self._ollama_available = False
         return None
 
     # -- validation --------------------------------------------------------
@@ -246,12 +333,13 @@ class Guardian:
         defense_code: str,
         attack_payload: str,
         sandbox: ArenaSandbox,
+        attack_type: Optional[AttackType] = None,
+        round_number: int = 0,
     ) -> bool:
         """Run *defense_code* then *attack_payload* in the sandbox.
 
         Returns ``True`` if the defense successfully blocks the attack.
         """
-        # Build attack code that uses the payload
         attack_code = (
             "import sys\n"
             f"payload = {attack_payload!r}\n"
@@ -260,13 +348,21 @@ class Guardian:
         )
         result: SandboxResult = await sandbox.execute_defense(defense_code, attack_code)
 
-        record = {
+        record: dict[str, Any] = {
             "defense_blocked": result.success,
             "attack_succeeded": result.attack_succeeded,
             "duration_ms": result.duration_ms,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "code": defense_code,
+            "attack_type": attack_type.value if attack_type else "unknown",
+            "success": result.success,
+            "round_number": round_number,
         }
         self.defense_history.append(record)
+
+        if result.success:
+            self._save_defense(record)
+
         return result.success
 
     # -- stats -------------------------------------------------------------
@@ -281,4 +377,5 @@ class Guardian:
             "detection_rate": round(blocked / total, 3) if total else 0.0,
             "active_defenses_count": len(self.active_defenses),
             "pattern_count": sum(len(p) for p in self.detection_patterns.values()),
+            "ollama_available": self._ollama_available,
         }

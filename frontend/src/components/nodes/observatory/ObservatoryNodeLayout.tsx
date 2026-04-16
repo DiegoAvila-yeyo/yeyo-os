@@ -298,11 +298,13 @@ function StatusDot({ status }: { status: string }) {
 // Main Layout
 // ---------------------------------------------------------------------------
 
-export function ObservatoryNodeLayout() {
+export function ObservatoryNodeLayout({ onExit }: { onExit?: () => void } = {}) {
   const [activeTab, setActiveTab] = useState<TabId>('town')
   const [events, setEvents] = useState<GameEvent[]>([])
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null)
   const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null)
+  // 0 = game only, 1 = stats panel visible, 2 triggers exit
+  const [panelState, setPanelState] = useState<0 | 1>(0)
   const [metrics, setMetrics] = useState<ObservatoryMetrics>({
     workflows_active: 0,
     agents_active: 0,
@@ -311,6 +313,15 @@ export function ObservatoryNodeLayout() {
   })
   const [agents, setAgents] = useState<AgentState[]>([])
   const wsRef = useRef<WebSocket | null>(null)
+
+  const handleArrowClick = useCallback(() => {
+    if (panelState === 0) {
+      setPanelState(1)
+    } else {
+      // panelState === 1 → exit
+      onExit?.()
+    }
+  }, [panelState, onExit])
 
   // ---- WebSocket ----
   useEffect(() => {
@@ -408,17 +419,59 @@ export function ObservatoryNodeLayout() {
         color: '#B0BEC5',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
-      {/* Tab bar */}
-      <div
+      {/* ← Arrow button — top-left */}
+      <button
+        onClick={handleArrowClick}
+        title={panelState === 0 ? 'Ver stats y actividad' : 'Volver al Hub'}
         style={{
+          position: 'absolute',
+          top: 14,
+          left: 14,
+          zIndex: 50,
+          background: 'rgba(10,10,15,0.75)',
+          border: '1px solid #333',
+          color: panelState === 0 ? '#4FC3F7' : '#EF4444',
+          borderRadius: '50%',
+          width: 40,
+          height: 40,
+          cursor: 'pointer',
+          fontSize: 20,
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(8px)',
+          transition: 'all 0.25s ease',
+          boxShadow: panelState === 0
+            ? '0 0 12px rgba(79,195,247,0.3)'
+            : '0 0 12px rgba(239,68,68,0.3)',
+        }}
+        onMouseEnter={(e) => {
+          ;(e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.1)'
+        }}
+        onMouseLeave={(e) => {
+          ;(e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'
+        }}
+      >
+        ←
+      </button>
+
+      {/* Tab bar — top-right, compact */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 14,
+          right: 14,
+          zIndex: 50,
+          display: 'flex',
           gap: 2,
-          padding: '6px 8px',
-          borderBottom: '1px solid #1E3A5F',
-          flexShrink: 0,
+          background: 'rgba(10,10,15,0.75)',
+          borderRadius: 6,
+          padding: '3px 4px',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid #1E3A5F44',
         }}
       >
         {TABS.map((tab) => {
@@ -432,8 +485,8 @@ export function ObservatoryNodeLayout() {
                 color: isActive ? '#fff' : '#556',
                 border: isActive ? '1px solid #4FC3F7' : '1px solid transparent',
                 borderRadius: 4,
-                padding: '5px 14px',
-                fontSize: 12,
+                padding: '4px 12px',
+                fontSize: 11,
                 fontWeight: isActive ? 600 : 400,
                 cursor: 'pointer',
                 transition: 'all 0.15s',
@@ -445,83 +498,147 @@ export function ObservatoryNodeLayout() {
         })}
       </div>
 
-      {/* Tab content */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      {/* Full-bleed content area */}
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {activeTab === 'town' && (
-          <TownTab
-            events={events}
-            metrics={metrics}
-            agents={agents}
-            selectedCharacter={selectedCharacter}
-            selectedBuilding={selectedBuilding}
-            onCharacterClick={handleCharacterClick}
-            onBuildingClick={handleBuildingClick}
-            onCloseCharacterInfo={handleCloseCharacterInfo}
-            onCloseBuildingInfo={() => setSelectedBuilding(null)}
-          />
+          <>
+            <GameCanvas
+              events={events}
+              onCharacterClick={handleCharacterClick}
+              onBuildingClick={handleBuildingClick}
+            />
+
+            {/* Character info popup */}
+            <CharacterInfo
+              characterName={selectedCharacter}
+              agents={agents}
+              events={events}
+              onClose={handleCloseCharacterInfo}
+            />
+
+            {/* Building popup */}
+            {selectedBuilding && (
+              <BuildingPopup
+                buildingName={selectedBuilding}
+                events={events}
+                onClose={() => setSelectedBuilding(null)}
+              />
+            )}
+          </>
         )}
 
         {activeTab === 'arena' && <ArenaView />}
 
         {activeTab === 'metrics' && <MetricsView metrics={metrics} agents={agents} />}
       </div>
-    </div>
-  )
-}
 
-// ---------------------------------------------------------------------------
-// Town tab sub-layout
-// ---------------------------------------------------------------------------
+      {/* Stats side panel — slides in from left on panelState === 1 */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: 340,
+          background: 'rgba(6, 11, 24, 0.92)',
+          borderRight: '1px solid #1E3A5F',
+          backdropFilter: 'blur(12px)',
+          zIndex: 40,
+          transform: panelState === 1 ? 'translateX(0)' : 'translateX(-100%)',
+          transition: 'transform 0.3s ease',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Panel header */}
+        <div
+          style={{
+            padding: '16px 16px 12px',
+            borderBottom: '1px solid #1E3A5F',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#4FC3F7' }}>
+            📊 Tras Bambalinas
+          </span>
+          <button
+            onClick={() => setPanelState(0)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#556',
+              cursor: 'pointer',
+              fontSize: 16,
+            }}
+          >
+            ✕
+          </button>
+        </div>
 
-function TownTab({
-  events,
-  metrics,
-  agents,
-  selectedCharacter,
-  selectedBuilding,
-  onCharacterClick,
-  onBuildingClick,
-  onCloseCharacterInfo,
-  onCloseBuildingInfo,
-}: {
-  events: GameEvent[]
-  metrics: ObservatoryMetrics
-  agents: AgentState[]
-  selectedCharacter: string | null
-  selectedBuilding: string | null
-  onCharacterClick: (name: string) => void
-  onBuildingClick: (name: string) => void
-  onCloseCharacterInfo: () => void
-  onCloseBuildingInfo: () => void
-}) {
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Game area + overlays */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <GameCanvas
-          events={events}
-          onCharacterClick={onCharacterClick}
-          onBuildingClick={onBuildingClick}
-        />
-        <StatusBoard metrics={metrics} />
-        <CharacterInfo
-          characterName={selectedCharacter}
-          agents={agents}
-          events={events}
-          onClose={onCloseCharacterInfo}
-        />
-        {selectedBuilding && (
-          <BuildingPopup
-            buildingName={selectedBuilding}
-            events={events}
-            onClose={onCloseBuildingInfo}
-          />
-        )}
-      </div>
+        {/* Metrics cards */}
+        <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {[
+            { label: 'Workflows', value: metrics.workflows_active, color: '#6366F1' },
+            { label: 'Agentes', value: metrics.agents_active, color: '#4FC3F7' },
+            { label: 'Eventos', value: metrics.total_events, color: '#10B981' },
+            { label: 'Ev/min', value: metrics.events_per_min, color: '#F59E0B' },
+          ].map((c) => (
+            <div
+              key={c.label}
+              style={{
+                background: '#0A0E1A',
+                border: '1px solid #1E3A5F',
+                borderRadius: 6,
+                padding: '8px 10px',
+              }}
+            >
+              <div style={{ fontSize: 9, color: '#556', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                {c.label}
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: c.color, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+                {c.value}
+              </div>
+            </div>
+          ))}
+        </div>
 
-      {/* Activity log (bottom strip) */}
-      <div style={{ height: 160, flexShrink: 0 }}>
-        <ActivityLog events={events} maxItems={20} />
+        {/* Agent table */}
+        <div style={{ padding: '4px 12px 8px', flexShrink: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: '#4FC3F7', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+            Agentes
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, color: '#B0BEC5' }}>
+            <tbody>
+              {agents.length > 0 ? agents.map((a) => (
+                <tr key={a.name}>
+                  <td style={{ padding: '3px 4px', borderBottom: '1px solid rgba(30,58,95,0.3)', color: '#fff' }}>
+                    {a.name}
+                  </td>
+                  <td style={{ padding: '3px 4px', borderBottom: '1px solid rgba(30,58,95,0.3)' }}>
+                    <StatusDot status={a.status} />
+                  </td>
+                  <td style={{ padding: '3px 4px', borderBottom: '1px solid rgba(30,58,95,0.3)', color: '#556' }}>
+                    {a.building || '—'}
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={3} style={{ padding: 8, textAlign: 'center', color: '#445', fontStyle: 'italic' }}>
+                    Sin agentes conectados
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Activity log */}
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <ActivityLog events={events} maxItems={30} />
+        </div>
       </div>
     </div>
   )

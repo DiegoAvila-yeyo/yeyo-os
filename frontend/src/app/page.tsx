@@ -309,8 +309,34 @@ function HubPrincipal() {
     }
   }, []);
 
+  const isFullscreenWorkspace = activeWorkspace === 'observatory';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: '#0a0a0f', overflow: 'hidden' }}>
+
+      {/* FULLSCREEN OBSERVATORY */}
+      {isFullscreenWorkspace && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#060B18' }}>
+          <button
+            onClick={() => cerrarTab('observatory')}
+            style={{
+              position: 'absolute', top: 12, left: 12, zIndex: 10000,
+              background: 'rgba(10,10,15,0.85)', border: '1px solid #333',
+              color: '#ccc', borderRadius: 8, padding: '8px 16px',
+              cursor: 'pointer', fontFamily: 'monospace', fontSize: 13,
+              display: 'flex', alignItems: 'center', gap: 6,
+              backdropFilter: 'blur(8px)',
+              transition: 'background 0.2s',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(30,58,95,0.9)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(10,10,15,0.85)' }}
+          >
+            ← Volver al Hub
+          </button>
+          <ObservatoryNodeLayout />
+        </div>
+      )}
+
       {/* TOPBAR */}
       <Topbar
         tabs={tabs}

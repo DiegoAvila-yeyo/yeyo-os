@@ -19,7 +19,10 @@ export type NodeType =
   | 'browser'
   | 'config'
   | 'memory'
-  | 'network';
+  | 'network'
+  | 'workflow'
+  | 'observatory'
+  | 'arena';
 
 // ─── Flash Memory Types ────────────────────────────────────────────────────────
 

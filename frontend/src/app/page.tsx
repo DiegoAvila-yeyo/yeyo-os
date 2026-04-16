@@ -38,21 +38,25 @@ import { AutomationNodeLayout } from '@/components/nodes/AutomationNodeLayout';
 import { MemoryNodeLayout } from '@/components/nodes/MemoryNodeLayout';
 import { MemoryMapLayout } from '@/components/nodes/MemoryMapLayout';
 import { YeyoNetNodeLayout } from '@/components/nodes/YeyoNetNodeLayout';
+import { WorkflowNodeLayout } from '@/components/nodes/workflows/WorkflowNodeLayout';
+import { ObservatoryNodeLayout } from '@/components/nodes/observatory/ObservatoryNodeLayout';
 import ChatPanel from '@/components/chat/ChatPanel';
 
 // ─── Nodos disponibles en el Hub ───────────────────────────────────────────────
 const NODOS_HUB: NodoLibreInfo[] = [
-  { id: 'imagen',    label: 'Imagen',     tipo: 'image',      icono: '🖼️',  colorAcento: '#1e90ff' },
-  { id: 'video',     label: 'Video',      tipo: 'video',      icono: '🎬',  colorAcento: '#9b59b6' },
-  { id: 'codigo',    label: 'Código',     tipo: 'code',       icono: '💻',  colorAcento: '#2ecc71' },
-  { id: 'automacion',label: 'Automatizar',tipo: 'automation', icono: '⚡',  colorAcento: '#ffa500' },
-  { id: 'chat',      label: 'Chat',       tipo: 'chat',       icono: '💬',  colorAcento: '#ff4444' },
-  { id: 'memoria',   label: 'Memoria',    tipo: 'memory',     icono: '🧠',  colorAcento: '#00bcd4' },
-  { id: 'mapa',      label: 'MemoryMap',  tipo: 'memory',     icono: '🗺️',  colorAcento: '#9c27b0' },
-  { id: 'yeyonet',   label: 'YeyoNet',    tipo: 'network',    icono: '🌐',  colorAcento: '#00e676' },
+  { id: 'imagen',      label: 'Imagen',      tipo: 'image',       icono: '🖼️',  colorAcento: '#1e90ff' },
+  { id: 'video',       label: 'Video',       tipo: 'video',       icono: '🎬',  colorAcento: '#9b59b6' },
+  { id: 'codigo',      label: 'Código',      tipo: 'code',        icono: '💻',  colorAcento: '#2ecc71' },
+  { id: 'automacion',  label: 'Automatizar', tipo: 'automation',  icono: '⚡',  colorAcento: '#ffa500' },
+  { id: 'chat',        label: 'Chat',        tipo: 'chat',        icono: '💬',  colorAcento: '#ff4444' },
+  { id: 'memoria',     label: 'Memoria',     tipo: 'memory',      icono: '🧠',  colorAcento: '#00bcd4' },
+  { id: 'mapa',        label: 'MemoryMap',   tipo: 'memory',      icono: '🗺️',  colorAcento: '#9c27b0' },
+  { id: 'yeyonet',     label: 'YeyoNet',     tipo: 'network',     icono: '🌐',  colorAcento: '#00e676' },
+  { id: 'workflows',   label: 'Workflows',   tipo: 'workflow',    icono: '⚙️',  colorAcento: '#6366F1' },
+  { id: 'observatory', label: 'Observatory', tipo: 'observatory', icono: '🔭',  colorAcento: '#F59E0B' },
 ];
 
-type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | 'mapa' | 'yeyonet' | null;
+type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | 'mapa' | 'yeyonet' | 'workflows' | 'observatory' | null;
 
 // ─── Workspace Router ──────────────────────────────────────────────────────────
 function WorkspaceRouter({
@@ -118,6 +122,8 @@ function WorkspaceRouter({
     case 'memoria':    return wrapper(<MemoryNodeLayout />);
     case 'mapa':       return wrapper(<MemoryMapLayout />);
     case 'yeyonet':    return wrapper(<YeyoNetNodeLayout />);
+    case 'workflows':  return wrapper(<WorkflowNodeLayout />);
+    case 'observatory': return wrapper(<ObservatoryNodeLayout />);
     default:           return null;
   }
 }
@@ -135,13 +141,15 @@ function HubPrincipal() {
   const [videoMessages, setVideoMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([]);
 
   const WORKSPACE_LABELS: Record<string, { label: string; icono: string }> = {
-    imagen:     { label: 'Imagen',      icono: '🖼️' },
-    video:      { label: 'Video',       icono: '🎬' },
-    codigo:     { label: 'Código',      icono: '💻' },
-    automacion: { label: 'Automatizar', icono: '⚡' },
-    memoria:    { label: 'Memoria',     icono: '🧠' },
-    mapa:       { label: 'MemoryMap',   icono: '🗺️' },
-    yeyonet:    { label: 'YeyoNet',     icono: '🌐' },
+    imagen:      { label: 'Imagen',      icono: '🖼️' },
+    video:       { label: 'Video',       icono: '🎬' },
+    codigo:      { label: 'Código',      icono: '💻' },
+    automacion:  { label: 'Automatizar', icono: '⚡' },
+    memoria:     { label: 'Memoria',     icono: '🧠' },
+    mapa:        { label: 'MemoryMap',   icono: '🗺️' },
+    yeyonet:     { label: 'YeyoNet',     icono: '🌐' },
+    workflows:   { label: 'Workflows',   icono: '⚙️' },
+    observatory: { label: 'Observatory', icono: '🔭' },
   };
 
   const abrirNodo = useCallback((nodeId: string) => {
@@ -150,7 +158,7 @@ function HubPrincipal() {
       useChatStore.getState().setPanelOpen(true);
       return;
     }
-    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria', 'mapa', 'yeyonet'].includes(nodeId)) return;
+    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria', 'mapa', 'yeyonet', 'workflows', 'observatory'].includes(nodeId)) return;
     const ws = nodeId as WorkspaceId;
     setActiveWorkspace(ws);
     const info = WORKSPACE_LABELS[nodeId];

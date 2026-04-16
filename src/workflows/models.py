@@ -202,6 +202,9 @@ class Workflow:
     def to_dict(self) -> dict:
         """Serialize the full workflow to a JSON-friendly dictionary."""
         return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
             "status": self.status.value,
             "nodes": [n.to_dict() for n in self.nodes],
             "edges": [e.to_dict() for e in self.edges],
@@ -283,6 +286,8 @@ class WorkflowExecution:
     def to_dict(self) -> dict:
         """Serialize the execution state to a JSON-friendly dictionary."""
         return {
+            "id": self.id,
+            "workflow_id": self.workflow_id,
             "workflow_name": self.workflow_name,
             "status": self.status.value,
             "node_results": [r.to_dict() for r in self.node_results],

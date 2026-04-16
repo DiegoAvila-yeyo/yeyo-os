@@ -150,7 +150,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   fetchWorkflows: async () => {
     set({ isLoading: true, error: null })
     try {
-      const res = await fetch(`${API_BASE}/api/workflows`)
+      const res = await fetch(`${API_BASE}/api/v1/workflows/`)
       if (!res.ok) throw new Error(`Failed to fetch workflows: ${res.statusText}`)
       const data = await res.json()
       set({ workflows: data })
@@ -164,7 +164,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   fetchWorkflow: async (id) => {
     set({ isLoading: true, error: null })
     try {
-      const res = await fetch(`${API_BASE}/api/workflows/${id}`)
+      const res = await fetch(`${API_BASE}/api/v1/workflows/${id}`)
       if (!res.ok) throw new Error(`Failed to fetch workflow: ${res.statusText}`)
       const data: WorkflowData = await res.json()
       set({ currentWorkflow: data })
@@ -178,7 +178,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   createWorkflow: async (data) => {
     set({ isLoading: true, error: null })
     try {
-      const res = await fetch(`${API_BASE}/api/workflows`, {
+      const res = await fetch(`${API_BASE}/api/v1/workflows/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -198,7 +198,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   updateWorkflow: async (id, data) => {
     set({ isLoading: true, error: null })
     try {
-      const res = await fetch(`${API_BASE}/api/workflows/${id}`, {
+      const res = await fetch(`${API_BASE}/api/v1/workflows/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -219,7 +219,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   deleteWorkflow: async (id) => {
     set({ isLoading: true, error: null })
     try {
-      const res = await fetch(`${API_BASE}/api/workflows/${id}`, { method: 'DELETE' })
+      const res = await fetch(`${API_BASE}/api/v1/workflows/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(`Failed to delete workflow: ${res.statusText}`)
       set((state) => ({
         workflows: state.workflows.filter((w) => w.id !== id),
@@ -235,7 +235,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   executeWorkflow: async (id, variables) => {
     set({ isLoading: true, error: null })
     try {
-      const res = await fetch(`${API_BASE}/api/workflows/${id}/execute`, {
+      const res = await fetch(`${API_BASE}/api/v1/workflows/${id}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ variables: variables ?? {} }),
@@ -255,7 +255,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   fetchExecutions: async (workflowId) => {
     set({ isLoading: true, error: null })
     try {
-      const res = await fetch(`${API_BASE}/api/workflows/${workflowId}/executions`)
+      const res = await fetch(`${API_BASE}/api/v1/workflows/${workflowId}/executions`)
       if (!res.ok) throw new Error(`Failed to fetch executions: ${res.statusText}`)
       const data: ExecutionData[] = await res.json()
       set({ executions: data })
@@ -283,7 +283,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   fetchNodeTypes: async () => {
     set({ isLoading: true, error: null })
     try {
-      const res = await fetch(`${API_BASE}/api/workflows/node-types`)
+      const res = await fetch(`${API_BASE}/api/v1/workflows/node-types`)
       if (!res.ok) throw new Error(`Failed to fetch node types: ${res.statusText}`)
       const data = await res.json()
       set({ nodeTypes: data.types ?? {}, nodeCategories: data.categories ?? {} })

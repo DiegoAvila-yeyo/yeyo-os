@@ -59,6 +59,13 @@ SAFE_FLAGS = {
     "-filter_complex", "-lavfi",
     "-hwaccel", "-vaapi_device",
     "-srt", "-sub_charenc",
+    # Phase 1 CapCut Pro additions
+    "-safe",        # concat demuxer safe mode
+    "-ac", "-ar",   # audio channels / sample rate
+    "-profile:v",   # H.264 profile
+    "-tune",        # encoding tune
+    "-n",           # never overwrite output
+    "-nostdin",     # disable stdin interaction
 }
 
 

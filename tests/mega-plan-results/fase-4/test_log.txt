@@ -1,0 +1,4 @@
+[FAIL] Agent buildings visible: Found 1/8: ['Robot']
+[PASS] API GET /observatory/agents: Status: 200, agents: 1
+[FAIL] API POST /observatory/task (Scientist): Status: 500
+[FAIL] Arena tab: Tab not found

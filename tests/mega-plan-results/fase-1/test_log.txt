@@ -1,0 +1,7 @@
+[FAIL] Tab Efectos: Found: False
+[FAIL] Tab Texto: Found: False
+[FAIL] Tab IA: Found: False
+[FAIL] Track T (subtitulos): Found: False
+[PASS] API subtitles/generate: Status: 422
+[PASS] API filters: Status: 200, filters: 4
+[PASS] API transitions: Status: 200, transitions: 5

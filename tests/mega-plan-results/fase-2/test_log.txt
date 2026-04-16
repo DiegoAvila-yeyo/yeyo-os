@@ -1,0 +1,4 @@
+[FAIL] Assets panel: Found: False
+[PASS] Canvas area: Found: True
+[FAIL] API GET /storyboard/: Status: 500
+[FAIL] API POST /storyboard/: Status: 500

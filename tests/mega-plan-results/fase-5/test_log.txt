@@ -1,0 +1,3 @@
+[FAIL] Mission form visible: Found: False
+[PASS] API GET /workshop/gates: Status: 200, gates: 17
+[FAIL] API POST /workshop/missions: Status: 500

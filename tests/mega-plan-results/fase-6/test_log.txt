@@ -1,0 +1,2 @@
+[FAIL] API GET /missions: Status: 500
+[FAIL] API POST /missions (from Observatory): Status: 500

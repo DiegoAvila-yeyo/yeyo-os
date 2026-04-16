@@ -1,0 +1,2 @@
+[PASS] Lab UI loaded: Found: True
+[FAIL] API GET /lab/projects: Status: 500

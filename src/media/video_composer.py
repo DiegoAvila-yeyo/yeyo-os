@@ -63,25 +63,27 @@ class VideoComposerService:
         output_path = self.output_dir / f"video_{uuid.uuid4().hex[:8]}.mp4"
 
         def _compose():
-            from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, CompositeVideoClip
+            from moviepy import ImageClip, concatenate_videoclips, AudioFileClip
 
             dur = duration_per_image or (1.0 / fps if fps > 0 else 1.0)
 
             clips = []
             for img_path in image_paths:
-                clip = ImageClip(img_path).set_duration(dur)
+                clip = ImageClip(img_path, duration=dur)
                 if transition == "fade":
-                    clip = clip.fadein(0.3).fadeout(0.3)
+                    clip = clip.with_effects([
+                        lambda c: c.fadein(0.3),
+                        lambda c: c.fadeout(0.3),
+                    ]) if hasattr(clip, 'with_effects') else clip.crossfadein(0.3).crossfadeout(0.3)
                 clips.append(clip)
 
             video = concatenate_videoclips(clips, method="compose")
 
             if audio_path and Path(audio_path).exists():
                 audio = AudioFileClip(audio_path)
-                # Recorta o repite audio para que coincida con la duración del video
                 if audio.duration > video.duration:
-                    audio = audio.subclip(0, video.duration)
-                video = video.set_audio(audio)
+                    audio = audio.subclipped(0, video.duration)
+                video = video.with_audio(audio)
 
             video.write_videofile(
                 str(output_path),
@@ -90,7 +92,7 @@ class VideoComposerService:
                 audio_codec="aac",
                 temp_audiofile=str(self.output_dir / "temp_audio.m4a"),
                 remove_temp=True,
-                logger=None,  # silencia la barra de progreso de moviepy
+                logger=None,
             )
 
             return video.duration, video.w, video.h
@@ -120,12 +122,12 @@ class VideoComposerService:
         output_path = self.output_dir / f"video_audio_{uuid.uuid4().hex[:8]}.mp4"
 
         def _add_audio():
-            from moviepy.editor import VideoFileClip, AudioFileClip
+            from moviepy import VideoFileClip, AudioFileClip
             video = VideoFileClip(video_path)
             audio = AudioFileClip(audio_path)
             if audio.duration > video.duration:
-                audio = audio.subclip(0, video.duration)
-            video = video.set_audio(audio)
+                audio = audio.subclipped(0, video.duration)
+            video = video.with_audio(audio)
             video.write_videofile(
                 str(output_path),
                 codec="libx264",
@@ -160,7 +162,7 @@ class VideoComposerService:
         output_path = self.output_dir / f"video_concat_{uuid.uuid4().hex[:8]}.mp4"
 
         def _concat():
-            from moviepy.editor import VideoFileClip, concatenate_videoclips
+            from moviepy import VideoFileClip, concatenate_videoclips
             clips = [VideoFileClip(p) for p in video_paths]
             final = concatenate_videoclips(clips)
             final.write_videofile(

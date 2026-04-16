@@ -16,6 +16,17 @@ export interface GameEvent {
   building?: string
 }
 
+export interface Particle {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  life: number
+  maxLife: number
+  color: string
+  size: number
+}
+
 const AGENT_BUILDINGS: Record<string, string> = {
   miner: 'Error Mine',
   scientist: 'Lab',
@@ -52,6 +63,9 @@ export class GameEngine {
   private scale = 3
   private clickHandler: ((e: MouseEvent) => void) | null = null
   private mouseMoveHandler: ((e: MouseEvent) => void) | null = null
+  private particles: Particle[] = []
+  private nightAlpha = 0
+  private selectedBuildingName: string | null = null
 
   onCharacterClick?: (name: string) => void
   onBuildingClick?: (name: string) => void
@@ -128,33 +142,153 @@ export class GameEngine {
       return !b.isExpired()
     })
 
-    this.camera.update()
+    this.camera.update(deltaTime)
+    this.updateParticles(deltaTime)
+    this.nightAlpha = this.getNightAlpha()
+
+    // Camera with shake offset
+    const camX = this.camera.x + this.camera.shakeOffsetX
+    const camY = this.camera.y + this.camera.shakeOffsetY
 
     // Clear
     this.ctx.fillStyle = '#0F172A'
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
 
     // Draw tilemap
-    this.tileMap.draw(this.ctx, this.camera.x, this.camera.y, this.scale)
+    this.tileMap.draw(this.ctx, camX, camY, this.scale)
 
-    // Draw buildings overlays (hover/selection effects)
+    // Draw buildings overlays (hover/selection effects + selected pulse)
     for (const building of this.buildings) {
-      building.draw(this.ctx, this.camera.x, this.camera.y, this.scale)
+      building.draw(this.ctx, camX, camY, this.scale)
+      if (building.isSelected) {
+        const tileScreenSize = TILE_SIZE * this.scale
+        const bx = building.def.tileX * tileScreenSize - camX
+        const by = building.def.tileY * tileScreenSize - camY
+        const bw = building.def.width * tileScreenSize
+        const bh = building.def.height * tileScreenSize
+        const pulse = 0.15 + 0.12 * Math.sin(timestamp / 300)
+        this.ctx.save()
+        this.ctx.globalAlpha = pulse
+        this.ctx.fillStyle = building.def.color
+        this.ctx.fillRect(bx, by, bw, bh)
+        this.ctx.restore()
+      }
     }
 
     // Sort characters by Y for proper depth ordering
     const sortedChars = Array.from(this.characters.values()).sort((a, b) => a.y - b.y)
 
     for (const character of sortedChars) {
-      character.draw(this.ctx, this.camera.x, this.camera.y, this.scale)
+      character.draw(this.ctx, camX, camY, this.scale)
     }
+
+    // Draw particles
+    this.drawParticles(this.ctx, camX, camY)
 
     // Draw speech bubbles
     for (const bubble of this.bubbles) {
-      bubble.draw(this.ctx, this.camera.x, this.camera.y, this.scale)
+      bubble.draw(this.ctx, camX, camY, this.scale)
     }
 
+    // Day/night overlay
+    this.drawNightOverlay(this.ctx, this.canvas.width, this.canvas.height)
+
     this.animFrameId = requestAnimationFrame((t) => this.gameLoop(t))
+  }
+
+  spawnParticles(x: number, y: number, count: number, color: string): void {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2
+      const speed = 20 + Math.random() * 60
+      const life = 600 + Math.random() * 600
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 30,
+        life,
+        maxLife: life,
+        color,
+        size: 1.5 + Math.random() * 2.5,
+      })
+    }
+  }
+
+  private getNightAlpha(): number {
+    const now = new Date()
+    const hour = now.getHours() + now.getMinutes() / 60
+    if (hour >= 23.5 || hour < 6.5) return 0.4
+    if (hour >= 7.5 && hour < 22.5) return 0
+    if (hour >= 22.5 && hour < 23.5) return 0.4 * (hour - 22.5)
+    if (hour >= 6.5 && hour < 7.5) return 0.4 * (1 - (hour - 6.5))
+    return 0
+  }
+
+  private updateParticles(deltaTime: number): void {
+    const dtSec = deltaTime / 1000
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i]
+      p.x += p.vx * dtSec
+      p.y += p.vy * dtSec
+      p.vy += 50 * dtSec
+      p.life -= deltaTime
+      if (p.life <= 0) {
+        this.particles.splice(i, 1)
+      }
+    }
+  }
+
+  private drawParticles(ctx: CanvasRenderingContext2D, camX: number, camY: number): void {
+    for (const p of this.particles) {
+      const alpha = Math.max(0, p.life / p.maxLife)
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.fillStyle = p.color
+      ctx.beginPath()
+      ctx.arc(p.x - camX, p.y - camY, p.size, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+  }
+
+  private drawNightOverlay(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+    if (this.nightAlpha <= 0) return
+
+    ctx.save()
+    ctx.fillStyle = `rgba(0, 0, 30, ${this.nightAlpha})`
+    ctx.fillRect(0, 0, width, height)
+
+    // Subtle glow around buildings at night
+    const tileScreenSize = TILE_SIZE * this.scale
+    const camX = this.camera.x + this.camera.shakeOffsetX
+    const camY = this.camera.y + this.camera.shakeOffsetY
+    for (const b of this.buildings) {
+      const bx = b.def.tileX * tileScreenSize - camX
+      const by = b.def.tileY * tileScreenSize - camY
+      const bw = b.def.width * tileScreenSize
+      const bh = b.def.height * tileScreenSize
+      const gradient = ctx.createRadialGradient(
+        bx + bw / 2, by + bh / 2, bw * 0.2,
+        bx + bw / 2, by + bh / 2, bw * 0.8
+      )
+      gradient.addColorStop(0, `rgba(255, 200, 100, ${this.nightAlpha * 0.3})`)
+      gradient.addColorStop(1, 'rgba(255, 200, 100, 0)')
+      ctx.fillStyle = gradient
+      ctx.fillRect(bx - bw * 0.3, by - bh * 0.3, bw * 1.6, bh * 1.6)
+    }
+
+    // Glow around characters at night
+    for (const character of Array.from(this.characters.values())) {
+      const sx = character.x * this.scale - camX
+      const sy = character.y * this.scale - camY
+      const gradient = ctx.createRadialGradient(sx + 24, sy + 24, 4, sx + 24, sy + 24, 30)
+      gradient.addColorStop(0, `rgba(255, 220, 150, ${this.nightAlpha * 0.25})`)
+      gradient.addColorStop(1, 'rgba(255, 220, 150, 0)')
+      ctx.fillStyle = gradient
+      ctx.fillRect(sx - 6, sy - 6, 60, 60)
+    }
+
+    ctx.restore()
   }
 
   handleEvent(event: GameEvent): void {
@@ -180,6 +314,12 @@ export class GameEngine {
       }
       case 'task_complete': {
         character.setStatus('✅ Done!', 3000)
+        this.spawnParticles(
+          character.x * this.scale,
+          character.y * this.scale,
+          15,
+          '#FFD700'
+        )
         const bld = this.buildings.find((b) => b.def.name === buildingName)
         if (bld) {
           bld.addActivity(event.agent_name, 'completed')
@@ -197,6 +337,12 @@ export class GameEngine {
       }
       case 'error': {
         character.setStatus('❌ Error!', 4000)
+        this.spawnParticles(
+          character.x * this.scale,
+          character.y * this.scale,
+          12,
+          '#EF4444'
+        )
         const errorBubble = new SpeechBubble(
           event.data?.message as string ?? 'Something went wrong',
           character.x * this.scale,
@@ -232,6 +378,15 @@ export class GameEngine {
         world.y >= bounds.y &&
         world.y < bounds.y + bounds.height
       ) {
+        const emoteIdx = Math.floor(Math.random() * 16)
+        const bubble = new SpeechBubble(
+          '👋',
+          character.x * this.scale,
+          character.y * this.scale,
+          2000,
+          emoteIdx
+        )
+        this.bubbles.push(bubble)
         this.onCharacterClick?.(character.name)
         return
       }
@@ -241,6 +396,7 @@ export class GameEngine {
     for (const building of this.buildings) {
       if (building.containsPoint(world.x, world.y, this.scale)) {
         building.isSelected = !building.isSelected
+        this.selectedBuildingName = building.isSelected ? building.def.name : null
         // Deselect others
         for (const b of this.buildings) {
           if (b !== building) b.isSelected = false
@@ -301,5 +457,6 @@ export class GameEngine {
     this.characters.clear()
     this.buildings = []
     this.bubbles = []
+    this.particles = []
   }
 }

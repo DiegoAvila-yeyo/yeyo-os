@@ -38,6 +38,7 @@ export class Character {
   state: CharacterState = 'idle'
   building: string
   color: string
+  lastActivity = ''
 
   private walkSheet: SpriteSheet
   private idleSheet: SpriteSheet
@@ -45,7 +46,7 @@ export class Character {
   private frame = 0
   private animTimer = 0
   private animSpeed = 150
-  private moveSpeed = 1.5
+  private moveSpeed = 3.0 // tiles per second
   private path: Array<{ x: number; y: number }> = []
   private pathIndex = 0
   private statusText = ''
@@ -115,24 +116,27 @@ export class Character {
     const dy = targetPixelY - this.y
     const dist = Math.sqrt(dx * dx + dy * dy)
 
-    // Determine direction based on movement
+    // Face the direction of movement
     if (Math.abs(dx) > Math.abs(dy)) {
       this.direction = dx > 0 ? 'right' : 'left'
     } else if (dy !== 0) {
       this.direction = dy > 0 ? 'down' : 'up'
     }
 
-    const step = this.moveSpeed * (deltaTime / 16)
-
-    if (dist <= step) {
+    if (dist < 0.5) {
+      // Snap to target tile when very close
       this.x = targetPixelX
       this.y = targetPixelY
       this.tileX = target.x
       this.tileY = target.y
       this.pathIndex++
     } else {
-      this.x += (dx / dist) * step
-      this.y += (dy / dist) * step
+      // Smooth lerp interpolation (frame-rate independent)
+      const dtSec = deltaTime / 1000
+      const lerpRate = this.moveSpeed * 8
+      const t = 1 - Math.exp(-lerpRate * dtSec)
+      this.x += dx * t
+      this.y += dy * t
     }
   }
 
@@ -239,6 +243,7 @@ export class Character {
   setStatus(text: string, duration = 3000): void {
     this.statusText = text
     this.statusTimer = duration
+    this.lastActivity = text
   }
 
   setBuilding(building: string): void {

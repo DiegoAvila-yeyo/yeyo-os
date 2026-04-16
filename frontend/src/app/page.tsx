@@ -38,6 +38,9 @@ import { AutomationNodeLayout } from '@/components/nodes/AutomationNodeLayout';
 import { MemoryNodeLayout } from '@/components/nodes/MemoryNodeLayout';
 import { MemoryMapLayout } from '@/components/nodes/MemoryMapLayout';
 import { YeyoNetNodeLayout } from '@/components/nodes/YeyoNetNodeLayout';
+import { StoryboardNodeLayout } from '@/components/nodes/StoryboardNodeLayout';
+import { LabNodeLayout } from '@/components/nodes/LabNodeLayout';
+import { ObservatoryNodeLayout } from '@/components/nodes/ObservatoryNodeLayout';
 import ChatPanel from '@/components/chat/ChatPanel';
 
 // ─── Nodos disponibles en el Hub ───────────────────────────────────────────────
@@ -50,9 +53,12 @@ const NODOS_HUB: NodoLibreInfo[] = [
   { id: 'memoria',   label: 'Memoria',    tipo: 'memory',     icono: '🧠',  colorAcento: '#00bcd4' },
   { id: 'mapa',      label: 'MemoryMap',  tipo: 'memory',     icono: '🗺️',  colorAcento: '#9c27b0' },
   { id: 'yeyonet',   label: 'YeyoNet',    tipo: 'network',    icono: '🌐',  colorAcento: '#00e676' },
+  { id: 'storyboard', label: 'Storyboard', tipo: 'storyboard', icono: '📋', colorAcento: '#D4A847' },
+  { id: 'laboratorio', label: 'Laboratorio', tipo: 'lab', icono: '🧪', colorAcento: '#2196F3' },
+  { id: 'observatory', label: 'Observatory', tipo: 'observatory', icono: '🔭', colorAcento: '#4CAF50' },
 ];
 
-type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | 'mapa' | 'yeyonet' | null;
+type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | 'mapa' | 'yeyonet' | 'storyboard' | 'laboratorio' | 'observatory' | null;
 
 // ─── Workspace Router ──────────────────────────────────────────────────────────
 function WorkspaceRouter({
@@ -118,6 +124,9 @@ function WorkspaceRouter({
     case 'memoria':    return wrapper(<MemoryNodeLayout />);
     case 'mapa':       return wrapper(<MemoryMapLayout />);
     case 'yeyonet':    return wrapper(<YeyoNetNodeLayout />);
+    case 'storyboard': return wrapper(<StoryboardNodeLayout />);
+    case 'laboratorio': return wrapper(<LabNodeLayout />);
+    case 'observatory': return wrapper(<ObservatoryNodeLayout />);
     default:           return null;
   }
 }
@@ -142,6 +151,9 @@ function HubPrincipal() {
     memoria:    { label: 'Memoria',     icono: '🧠' },
     mapa:       { label: 'MemoryMap',   icono: '🗺️' },
     yeyonet:    { label: 'YeyoNet',     icono: '🌐' },
+    storyboard: { label: 'Storyboard',  icono: '📋' },
+    laboratorio: { label: 'Laboratorio', icono: '🧪' },
+    observatory: { label: 'Observatory', icono: '🔭' },
   };
 
   const abrirNodo = useCallback((nodeId: string) => {
@@ -150,7 +162,7 @@ function HubPrincipal() {
       useChatStore.getState().setPanelOpen(true);
       return;
     }
-    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria', 'mapa', 'yeyonet'].includes(nodeId)) return;
+    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria', 'mapa', 'yeyonet', 'storyboard', 'laboratorio', 'observatory'].includes(nodeId)) return;
     const ws = nodeId as WorkspaceId;
     setActiveWorkspace(ws);
     const info = WORKSPACE_LABELS[nodeId];

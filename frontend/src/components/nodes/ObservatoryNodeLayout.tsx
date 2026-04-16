@@ -42,6 +42,19 @@ interface CrewMission {
   results: Array<{ agent: string; output: string }>;
 }
 
+interface BridgeMission {
+  id: string;
+  title: string;
+  description: string;
+  origin: string;
+  created_by: string;
+  finding: string;
+  analysis: string;
+  strategy: string;
+  status: string;
+  created_at?: string;
+}
+
 export interface ObservatoryNodeLayoutProps {}
 
 // ─── Default Agents ─────────────────────────────────────────────────────────────
@@ -58,6 +71,7 @@ const DEFAULT_AGENTS: ObservatoryAgent[] = [
 ];
 
 const API_BASE = 'http://localhost:8000/api/v1/observatory';
+const MISSIONS_API = 'http://localhost:8000/api/v1/missions';
 
 // ─── Keyframes (injected once) ──────────────────────────────────────────────────
 
@@ -113,6 +127,11 @@ export function ObservatoryNodeLayout(_props: ObservatoryNodeLayoutProps) {
   const [crewAgents, setCrewAgents] = useState<string[]>([]);
   const [crewSending, setCrewSending] = useState(false);
   const [activeMission, setActiveMission] = useState<CrewMission | null>(null);
+
+  // Missions bridge state
+  const [missions, setMissions] = useState<BridgeMission[]>([]);
+  const [missionsOpen, setMissionsOpen] = useState(false);
+  const [missionToast, setMissionToast] = useState('');
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const crewPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -253,6 +272,53 @@ export function ObservatoryNodeLayout(_props: ObservatoryNodeLayoutProps) {
     );
   }, []);
 
+  // ─── Missions bridge ───────────────────────────────────────────────────────
+  const fetchMissions = useCallback(async () => {
+    try {
+      const res = await fetch(`${MISSIONS_API}?limit=20`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setMissions(data);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchMissions(); }, [fetchMissions]);
+
+  const createMissionFromTask = useCallback(async (task: ObservatoryTask) => {
+    try {
+      const res = await fetch(`${API_BASE}/tasks/${task.id}/to-mission`, { method: 'POST' });
+      if (res.ok) {
+        setMissionToast('✅ Misión creada desde tarea');
+        await fetchMissions();
+      } else {
+        const err = await res.json().catch(() => ({ detail: 'Error' }));
+        setMissionToast(`❌ ${err.detail || 'Error al crear misión'}`);
+      }
+    } catch { setMissionToast('❌ Error de conexión'); }
+  }, [fetchMissions]);
+
+  const sendMissionToWorkshop = useCallback(async (missionId: string) => {
+    try {
+      const res = await fetch(`${MISSIONS_API}/${missionId}/send-to-workshop`, { method: 'POST' });
+      if (res.ok) {
+        setMissionToast('🏗️ Misión enviada al Workshop');
+        await fetchMissions();
+      } else {
+        const err = await res.json().catch(() => ({ detail: 'Error' }));
+        setMissionToast(`❌ ${err.detail || 'Error al enviar'}`);
+      }
+    } catch { setMissionToast('❌ Error de conexión'); }
+  }, [fetchMissions]);
+
+  // Auto-clear toast
+  useEffect(() => {
+    if (missionToast) {
+      const t = setTimeout(() => setMissionToast(''), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [missionToast]);
+
   // ─── Filtered tasks ────────────────────────────────────────────────────────
   const filteredTasks = tasks.filter(t => {
     if (filterAgent !== 'all' && t.agent_name !== filterAgent) return false;
@@ -317,6 +383,28 @@ export function ObservatoryNodeLayout(_props: ObservatoryNodeLayoutProps) {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => { setMissionsOpen(!missionsOpen); fetchMissions(); }}
+            style={{
+              background: 'linear-gradient(135deg, #1565C0, #1976D2)', border: 'none', color: '#fff',
+              padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13,
+              transition: 'transform 0.15s', position: 'relative',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.05)')}
+            onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+          >
+            📋 Misiones
+            {missions.filter(m => m.status === 'pending').length > 0 && (
+              <span style={{
+                position: 'absolute', top: -6, right: -6,
+                background: '#f44336', color: '#fff', fontSize: 10, fontWeight: 700,
+                width: 18, height: 18, borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {missions.filter(m => m.status === 'pending').length}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => setCrewOpen(true)}
             style={{
@@ -560,9 +648,21 @@ export function ObservatoryNodeLayout(_props: ObservatoryNodeLayoutProps) {
                       maxHeight: 300, overflowY: 'auto',
                     }}>
                       {task.result_output ? (
-                        <div style={{ fontSize: 13, lineHeight: 1.6, color: '#ddd' }}>
-                          <ReactMarkdown>{task.result_output}</ReactMarkdown>
-                        </div>
+                        <>
+                          <div style={{ fontSize: 13, lineHeight: 1.6, color: '#ddd' }}>
+                            <ReactMarkdown>{task.result_output}</ReactMarkdown>
+                          </div>
+                          {task.status === 'completed' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); createMissionFromTask(task); }}
+                              style={{
+                                marginTop: 8, background: 'linear-gradient(135deg, #1565C0, #1976D2)',
+                                border: 'none', color: '#fff', padding: '6px 14px', borderRadius: 6,
+                                cursor: 'pointer', fontWeight: 600, fontSize: 12,
+                              }}
+                            >📋 Crear Misión</button>
+                          )}
+                        </>
                       ) : (
                         <div style={{ fontSize: 12, color: '#666', fontStyle: 'italic' }}>
                           {task.status === 'running' ? '🔄 Procesando...' : 'Sin resultado disponible'}
@@ -745,6 +845,117 @@ export function ObservatoryNodeLayout(_props: ObservatoryNodeLayoutProps) {
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TOAST NOTIFICATION ═══ */}
+      {missionToast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 2000,
+          background: 'rgba(0,0,0,0.85)', color: '#fff', padding: '12px 20px',
+          borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          animation: 'obs-fade-in 0.2s ease-out',
+          border: '1px solid rgba(255,255,255,0.15)',
+        }}>
+          {missionToast}
+        </div>
+      )}
+
+      {/* ═══ MISSIONS PANEL (MODAL) ═══ */}
+      {missionsOpen && (
+        <div
+          onClick={() => setMissionsOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '90%', maxWidth: 640, maxHeight: '80vh',
+              background: 'linear-gradient(180deg, #0d1a2e 0%, #0d0d1a 100%)',
+              borderRadius: 16, border: '1px solid rgba(21,101,192,0.3)',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+              animation: 'obs-fade-in 0.25s ease-out',
+              overflow: 'hidden', display: 'flex', flexDirection: 'column',
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 12,
+              background: 'linear-gradient(135deg, rgba(21,101,192,0.3), rgba(25,118,210,0.1))',
+              borderBottom: '1px solid rgba(21,101,192,0.2)',
+            }}>
+              <span style={{ fontSize: 28 }}>📋</span>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#90CAF9' }}>Misiones</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                  {missions.length} misión{missions.length !== 1 ? 'es' : ''} — Puente Observatory ↔ Workshop
+                </div>
+              </div>
+              <button
+                onClick={() => setMissionsOpen(false)}
+                style={{
+                  marginLeft: 'auto', background: 'rgba(255,255,255,0.1)', border: 'none',
+                  color: '#aaa', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', fontSize: 16,
+                }}
+              >✕</button>
+            </div>
+
+            {/* Mission list */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px' }}>
+              {missions.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#555', padding: '40px 0', fontSize: 14 }}>
+                  No hay misiones aún. Completa una tarea y crea una misión desde el resultado.
+                </div>
+              ) : (
+                missions.map(m => (
+                  <div key={m.id} style={{
+                    marginBottom: 10, padding: '12px 16px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: m.status === 'pending' ? '1px solid rgba(21,101,192,0.3)' : '1px solid rgba(255,255,255,0.06)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 14 }}>
+                        {m.origin === 'observatory' ? '🔭' : '👤'}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#ddd', flex: 1 }}>
+                        {m.title}
+                      </span>
+                      <span style={{
+                        fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 600,
+                        background: m.status === 'pending' ? 'rgba(21,101,192,0.2)' : m.status === 'completed' ? 'rgba(76,175,80,0.2)' : 'rgba(255,152,0,0.2)',
+                        color: m.status === 'pending' ? '#90CAF9' : m.status === 'completed' ? '#A5D6A7' : '#FFB74D',
+                      }}>
+                        {m.status}
+                      </span>
+                    </div>
+                    {m.created_by && m.created_by !== 'user' && (
+                      <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
+                        Agente: {m.created_by}
+                      </div>
+                    )}
+                    {m.finding && (
+                      <div style={{ fontSize: 11, color: '#999', marginBottom: 6, maxHeight: 60, overflow: 'hidden' }}>
+                        {m.finding.slice(0, 200)}…
+                      </div>
+                    )}
+                    {(m.status === 'pending' || m.status === 'spec_review') && (
+                      <button
+                        onClick={() => sendMissionToWorkshop(m.id)}
+                        style={{
+                          background: 'linear-gradient(135deg, #FF9800, #F57C00)', border: 'none',
+                          color: '#fff', padding: '5px 12px', borderRadius: 6,
+                          cursor: 'pointer', fontWeight: 600, fontSize: 11,
+                        }}
+                      >🏗️ Enviar al Workshop</button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}

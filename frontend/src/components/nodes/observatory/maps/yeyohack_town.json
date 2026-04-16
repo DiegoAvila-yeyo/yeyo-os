@@ -1,0 +1,82 @@
+{
+  "name": "YeyoHack Town",
+  "width": 20,
+  "height": 15,
+  "tileSize": 16,
+  "buildings": [
+    {
+      "name": "Workflow Factory",
+      "tileX": 8, "tileY": 6,
+      "width": 4, "height": 3,
+      "color": "#6366F1",
+      "icon": "🏭",
+      "description": "Central hub where workflow robots execute pipelines"
+    },
+    {
+      "name": "Error Mine",
+      "tileX": 1, "tileY": 1,
+      "width": 3, "height": 2,
+      "color": "#EF4444",
+      "icon": "⛏️",
+      "description": "Where the Miner extracts and processes error patterns"
+    },
+    {
+      "name": "Lab",
+      "tileX": 15, "tileY": 1,
+      "width": 3, "height": 2,
+      "color": "#06B6D4",
+      "icon": "🔬",
+      "description": "Research facility where the Scientist experiments"
+    },
+    {
+      "name": "Library",
+      "tileX": 15, "tileY": 10,
+      "width": 3, "height": 2,
+      "color": "#8B5CF6",
+      "icon": "📚",
+      "description": "Knowledge repository managed by the Writer"
+    },
+    {
+      "name": "Gym",
+      "tileX": 1, "tileY": 10,
+      "width": 3, "height": 2,
+      "color": "#F59E0B",
+      "icon": "💪",
+      "description": "Training grounds where the Tester validates code"
+    },
+    {
+      "name": "Security Station",
+      "tileX": 1, "tileY": 6,
+      "width": 3, "height": 2,
+      "color": "#10B981",
+      "icon": "🛡️",
+      "description": "Defensive outpost monitored by the Guard"
+    },
+    {
+      "name": "Pattern Palace",
+      "tileX": 15, "tileY": 6,
+      "width": 3, "height": 2,
+      "color": "#EC4899",
+      "icon": "🏛️",
+      "description": "Where the Optimizer and Sage analyze code patterns"
+    }
+  ],
+  "characters": {
+    "miner": { "startX": 2, "startY": 2, "building": "Error Mine", "color": "#EF4444" },
+    "scientist": { "startX": 16, "startY": 2, "building": "Lab", "color": "#06B6D4" },
+    "tester": { "startX": 2, "startY": 11, "building": "Gym", "color": "#F59E0B" },
+    "writer": { "startX": 16, "startY": 11, "building": "Library", "color": "#8B5CF6" },
+    "optimizer": { "startX": 16, "startY": 7, "building": "Pattern Palace", "color": "#EC4899" },
+    "guard": { "startX": 2, "startY": 7, "building": "Security Station", "color": "#10B981" },
+    "sage": { "startX": 14, "startY": 7, "building": "Pattern Palace", "color": "#F472B6" },
+    "robot": { "startX": 9, "startY": 7, "building": "Workflow Factory", "color": "#6366F1" }
+  },
+  "paths": [
+    { "from": "Error Mine", "to": "Workflow Factory", "waypoints": [[4, 2], [4, 7], [8, 7]] },
+    { "from": "Lab", "to": "Workflow Factory", "waypoints": [[15, 2], [15, 7], [12, 7]] },
+    { "from": "Gym", "to": "Workflow Factory", "waypoints": [[4, 11], [4, 8], [8, 8]] },
+    { "from": "Library", "to": "Workflow Factory", "waypoints": [[15, 11], [15, 8], [12, 8]] },
+    { "from": "Security Station", "to": "Workflow Factory", "waypoints": [[4, 7], [8, 7]] },
+    { "from": "Pattern Palace", "to": "Workflow Factory", "waypoints": [[15, 7], [12, 7]] }
+  ]
+}

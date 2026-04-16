@@ -48,6 +48,7 @@ from src.api.routes.video import router as video_router, get_ia_provider as vide
 from src.api.routes.yeyonet import router as yeyonet_router, get_invite_manager as yeyonet_get_invite, get_satellite_manager as yeyonet_get_sat, get_node_identity as yeyonet_get_identity, get_job_orchestrator as yeyonet_get_orchestrator, get_sync_manager as yeyonet_get_sync, get_yeyonet_client as yeyonet_get_client
 from src.api.routes.cloud_sync import router as cloud_sync_router, get_cloud_sync as cloud_sync_get
 from src.api.routes.workflows import router as workflows_router
+from src.api.routes.observatory import router as observatory_router
 
 logger = logging.getLogger("yeyoos.api")
 
@@ -290,6 +291,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"No se pudo inicializar Workflow Orchestrator: {e}")
 
+    # Initialize Observatory Service
+    try:
+        from src.observatory.service import ObservatoryService
+        _observatory_service = ObservatoryService.get_instance()
+        await _observatory_service.start()
+        logger.info("🔭 Observatory inicializado")
+    except Exception as e:
+        logger.warning(f"No se pudo inicializar Observatory: {e}")
+
     yield
 
     # Shutdown
@@ -527,6 +537,7 @@ app.include_router(video_router)
 app.include_router(yeyonet_router)
 app.include_router(cloud_sync_router)
 app.include_router(workflows_router)
+app.include_router(observatory_router)
 
 
 # ========== WebSocket ==========

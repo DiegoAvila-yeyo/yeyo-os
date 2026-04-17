@@ -112,8 +112,9 @@ class YeyoHack:
                     f"Round {round_num}: Generate a {attack_type} security test script. "
                     f"Focus on: {'finding vulnerabilities' if attack_type == 'explore' else 'exploiting a weakness'}."
                 )
-                response = await self.ia.generate(
-                    prompt=prompt, system=system, temperature=0.9,
+                response = await asyncio.wait_for(
+                    self.ia.generate(prompt=prompt, system=system, temperature=0.9),
+                    timeout=8.0,
                 )
                 code = self._extract_code(response.content)
                 severity = random.randint(3, 8) if attack_type == 'exploit' else random.randint(1, 5)
@@ -165,8 +166,9 @@ class Guardian:
                     f"Detected patterns: {detected_patterns}. Attack code:\n{attack_code}\n\n"
                     f"Generate defense:"
                 )
-                response = await self.ia.generate(
-                    prompt=prompt, system=system, temperature=0.7,
+                response = await asyncio.wait_for(
+                    self.ia.generate(prompt=prompt, system=system, temperature=0.7),
+                    timeout=8.0,
                 )
                 defense = self._extract_code(response.content)
                 return detected, defense

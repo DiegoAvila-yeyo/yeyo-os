@@ -1,0 +1,2 @@
+Health check: status=200
+{'status': 'healthy', 'version': '0.1.0', 'uptime_seconds': 95.54}

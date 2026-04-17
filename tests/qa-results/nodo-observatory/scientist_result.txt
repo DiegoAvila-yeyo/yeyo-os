@@ -1,0 +1,7 @@
+[Análisis simulado — Ollama no disponible]
+
+Tarea recibida: Analiza la arquitectura del módulo de memoria de YeyoOS...
+
+Agente: scientist (🔬)
+
+Resultado: Esta tarea requiere acceso a un modelo de lenguaje. El agente scientist ha registrado la solicitud y proporcionará un análisis completo cuando Ollama esté disponible con el modelo configurado. En modo simulación, todas las operaciones de lectura/verificación de APIs se ejecutan normalmente; solo la generación de texto IA usa esta respuesta de fallback.

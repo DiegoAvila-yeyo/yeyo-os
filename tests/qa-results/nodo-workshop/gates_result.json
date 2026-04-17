@@ -1,0 +1,138 @@
+[
+  {
+    "gate_number": 0,
+    "gate_name": "Spec-First",
+    "status": "passed",
+    "output": "Spec complete: 1 inputs, 1 outputs, 2 criteria",
+    "duration_ms": 1,
+    "attempts": 1
+  },
+  {
+    "gate_number": 1,
+    "gate_name": "Architect",
+    "status": "skipped",
+    "output": "[IA error: ]",
+    "duration_ms": 10005,
+    "attempts": 1
+  },
+  {
+    "gate_number": 2,
+    "gate_name": "Coder",
+    "status": "passed",
+    "output": "\"\"\"\nAuto-generated skeleton \u2014 IA not available.\nImplements specification: Retorna lista ordenada\n\"\"\"\nfrom typing import Any, List\n\n\ndef safe_sort(arr: list[int]) -> Any:\n    \"\"\"\n    # - Retorna lista ordenada\n    # - No muta input\n    \"\"\"\n    # TODO: Implement full logic when IA is available\n    if not isinstance(arr, list):\n        raise TypeError(\"Expected a list\")\n    return sorted(arr)\n\n# Note: [IA error: ]",
+    "duration_ms": 10010,
+    "attempts": 1
+  },
+  {
+    "gate_number": 3,
+    "gate_name": "AST Parse",
+    "status": "passed",
+    "output": "Parsed OK \u2014 1 functions, 0 classes",
+    "duration_ms": 21,
+    "attempts": 1
+  },
+  {
+    "gate_number": 4,
+    "gate_name": "Type Check",
+    "status": "passed",
+    "output": "No type errors found",
+    "duration_ms": 2096,
+    "attempts": 1
+  },
+  {
+    "gate_number": 5,
+    "gate_name": "Auto Tests",
+    "status": "passed",
+    "output": "\"\"\"Auto-generated minimal tests \u2014 IA not available.\"\"\"\nimport pytest\nfrom module_under_test import safe_sort\n\n\ndef test_empty_list():\n    assert safe_sort([]) == []\n\n\ndef test_single_element():\n    assert safe_sort([1]) == [1]\n\n\ndef test_sorted_output():\n    assert safe_sort([3, 1, 2]) == [1, 2, 3]\n\n\ndef test_duplicates():\n    assert safe_sort([2, 2, 1]) == [1, 2, 2]\n\n\ndef test_type_error():\n    with pytest.raises(TypeError):\n        safe_sort(\"not a list\")\n",
+    "duration_ms": 10373,
+    "attempts": 1
+  },
+  {
+    "gate_number": 6,
+    "gate_name": "Property Testing",
+    "status": "skipped",
+    "output": "[IA error: ]",
+    "duration_ms": 10008,
+    "attempts": 1
+  },
+  {
+    "gate_number": 7,
+    "gate_name": "Functional Verify",
+    "status": "skipped",
+    "output": "[IA error: ]",
+    "duration_ms": 10011,
+    "attempts": 1
+  },
+  {
+    "gate_number": 8,
+    "gate_name": "Coverage Check",
+    "status": "passed",
+    "output": "Tests passed (coverage parsing unavailable):\n.....                                                                    [100%]\n5 passed in 0.01s",
+    "duration_ms": 836,
+    "attempts": 1
+  },
+  {
+    "gate_number": 9,
+    "gate_name": "Mutation Testing",
+    "status": "passed",
+    "output": "No applicable mutations found",
+    "duration_ms": 1,
+    "attempts": 1
+  },
+  {
+    "gate_number": 10,
+    "gate_name": "Security Scan",
+    "status": "passed",
+    "output": "No security issues found",
+    "duration_ms": 10022,
+    "attempts": 1
+  },
+  {
+    "gate_number": 11,
+    "gate_name": "Performance Analysis",
+    "status": "passed",
+    "output": "AI analysis:\n[IA error: ]",
+    "duration_ms": 10024,
+    "attempts": 1
+  },
+  {
+    "gate_number": 12,
+    "gate_name": "Reference Compare",
+    "status": "skipped",
+    "output": "[IA error: ]",
+    "duration_ms": 10010,
+    "attempts": 1
+  },
+  {
+    "gate_number": 13,
+    "gate_name": "Cross-Model Review",
+    "status": "skipped",
+    "output": "[IA error: ]",
+    "duration_ms": 10028,
+    "attempts": 1
+  },
+  {
+    "gate_number": 14,
+    "gate_name": "Critic Scoring",
+    "status": "skipped",
+    "output": "[IA error: ]",
+    "duration_ms": 10004,
+    "attempts": 1
+  },
+  {
+    "gate_number": 15,
+    "gate_name": "Human Checkpoint",
+    "status": "passed",
+    "output": "Awaiting human approval",
+    "duration_ms": 44,
+    "attempts": 1
+  },
+  {
+    "gate_number": 16,
+    "gate_name": "Contract Testing",
+    "status": "passed",
+    "output": "Found 1 functions: safe_sort",
+    "duration_ms": 1,
+    "attempts": 1
+  }
+]

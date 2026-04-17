@@ -318,7 +318,47 @@ async def approve_gate(mission_id: str, gate_number: int, pool=Depends(get_pool)
     )
 
     pipeline = _pipelines.get(mission_id)
-    if pipeline and pipeline.current_gate == 15:
+    if mission_id not in _pipelines:
+        # Pipeline completed with waiting_approval and was popped from _pipelines.
+        # Create a continuation pipeline from DB state.
+        spec_row = await pool.fetchrow(
+            "SELECT spec, title, code_files FROM workshop_missions WHERE id = $1::uuid",
+            mission_id,
+        )
+        if spec_row:
+            spec_data = json.loads(spec_row["spec"]) if isinstance(spec_row["spec"], str) else spec_row["spec"]
+            # Get generated code from gate 2 output (more reliable than code_files)
+            code_from_gate = await pool.fetchval(
+                """SELECT output FROM workshop_gates 
+                   WHERE mission_id = $1::uuid AND gate_number = 2 AND status = 'passed'
+                   ORDER BY created_at DESC LIMIT 1""",
+                mission_id,
+            )
+            generated_code = code_from_gate or ""
+
+            mini = WorkshopPipeline(ia_provider=_ia_provider, pool=_pool, ws_manager=_ws_manager)
+            mini._generated_code = generated_code
+            spec = MissionSpec(**spec_data)
+
+            async def _continue_from_db():
+                try:
+                    from src.workshop.pipeline import GateResult
+                    import time as _time
+                    start = _time.time()
+                    await mini._update_gate_status(mission_id, 16, "Contract Testing", "running")
+                    await mini._broadcast(mission_id, 16, "Contract Testing", "running")
+                    result = await mini._gate_contract(mini._generated_code, spec)
+                    result.duration_ms = int((_time.time() - start) * 1000)
+                    await mini._save_gate_result(mission_id, result)
+                    await mini._broadcast(mission_id, 16, "Contract Testing", result.status, result.output[:500])
+                    final_status = "completed" if result.status in ("passed", "skipped") else "error"
+                    await mini._update_mission_status(mission_id, final_status, mini._generated_code)
+                except Exception as e:
+                    logger.error(f"Gate 16 continuation (from DB) failed: {e}")
+                    await mini._update_mission_status(mission_id, "error", mini._generated_code)
+
+            asyncio.create_task(_continue_from_db())
+    elif pipeline and pipeline.current_gate == 15:
         # Resume pipeline from gate 16 (contract testing)
         spec_row = await pool.fetchrow(
             "SELECT spec, title FROM workshop_missions WHERE id = $1::uuid",

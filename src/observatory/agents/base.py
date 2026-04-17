@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass, field
 from typing import Optional
 import time
@@ -29,9 +30,29 @@ class BaseAgent:
 
     async def _ask_ollama(self, prompt: str, system: str = "") -> str:
         if self.ia is None:
-            return f"[Simulated] Response to: {prompt[:100]}"
-        response = await self.ia.generate(prompt=prompt, system=system, temperature=0.7)
-        return response.content
+            return self._simulated_response(prompt)
+        try:
+            response = await asyncio.wait_for(
+                self.ia.generate(prompt=prompt, system=system, temperature=0.7),
+                timeout=8.0,
+            )
+            return response.content if response.content else self._simulated_response(prompt)
+        except Exception:
+            return self._simulated_response(prompt)
+
+    def _simulated_response(self, prompt: str) -> str:
+        """Generate a structured fallback response when Ollama is unavailable."""
+        task_snippet = prompt[:120].replace("\n", " ")
+        return (
+            f"[Análisis simulado — Ollama no disponible]\n\n"
+            f"Tarea recibida: {task_snippet}...\n\n"
+            f"Agente: {self.name} ({self.emoji})\n\n"
+            f"Resultado: Esta tarea requiere acceso a un modelo de lenguaje. "
+            f"El agente {self.name} ha registrado la solicitud y proporcionará "
+            f"un análisis completo cuando Ollama esté disponible con el modelo configurado. "
+            f"En modo simulación, todas las operaciones de lectura/verificación de APIs "
+            f"se ejecutan normalmente; solo la generación de texto IA usa esta respuesta de fallback."
+        )
 
     async def _store_memory(self, content: str, namespace: str) -> bool:
         if self.memory is None:

@@ -22,7 +22,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("yeyoos.api.storyboard")
@@ -345,6 +345,46 @@ async def add_frame(storyboard_id: str, body: FrameCreate, pool=Depends(get_pool
     return _row_to_frame(row)
 
 
+@router.put("/{storyboard_id}/frames/reorder")
+async def reorder_frames(
+    storyboard_id: str,
+    items: List[FrameReorderItem] = Body(...),
+    pool=Depends(get_pool),
+):
+    """Reorder frames within a storyboard. Must be declared before /{frame_id} route."""
+    try:
+        sb_uuid = uuid.UUID(storyboard_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid storyboard ID")
+
+    async with pool.acquire() as conn:
+        exists = await conn.fetchval("SELECT 1 FROM storyboards WHERE id = $1", sb_uuid)
+        if not exists:
+            raise HTTPException(status_code=404, detail="Storyboard not found")
+
+        async with conn.transaction():
+            for item in items:
+                try:
+                    f_uuid = uuid.UUID(item.frame_id)
+                except ValueError:
+                    raise HTTPException(status_code=400, detail=f"Invalid frame ID: {item.frame_id}")
+
+                await conn.execute(
+                    """
+                    UPDATE storyboard_frames
+                    SET sort_order = $1
+                    WHERE id = $2 AND storyboard_id = $3
+                    """,
+                    item.sort_order,
+                    f_uuid,
+                    sb_uuid,
+                )
+
+        await conn.execute("UPDATE storyboards SET updated_at = NOW() WHERE id = $1", sb_uuid)
+
+    return {"status": "ok", "reordered": len(items)}
+
+
 @router.put("/{storyboard_id}/frames/{frame_id}", response_model=FrameResponse)
 async def update_frame(storyboard_id: str, frame_id: str, body: FrameUpdate, pool=Depends(get_pool)):
     """Update a specific frame."""
@@ -400,47 +440,6 @@ async def delete_frame(storyboard_id: str, frame_id: str, pool=Depends(get_pool)
         )
         if result == "DELETE 0":
             raise HTTPException(status_code=404, detail="Frame not found")
-
-
-@router.put("/{storyboard_id}/frames/reorder")
-async def reorder_frames(
-    storyboard_id: str,
-    items: List[FrameReorderItem],
-    pool=Depends(get_pool),
-):
-    """Reorder frames within a storyboard."""
-    try:
-        sb_uuid = uuid.UUID(storyboard_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid storyboard ID")
-
-    async with pool.acquire() as conn:
-        exists = await conn.fetchval("SELECT 1 FROM storyboards WHERE id = $1", sb_uuid)
-        if not exists:
-            raise HTTPException(status_code=404, detail="Storyboard not found")
-
-        async with conn.transaction():
-            for item in items:
-                try:
-                    f_uuid = uuid.UUID(item.frame_id)
-                except ValueError:
-                    raise HTTPException(status_code=400, detail=f"Invalid frame ID: {item.frame_id}")
-
-                await conn.execute(
-                    """
-                    UPDATE storyboard_frames
-                    SET sort_order = $1
-                    WHERE id = $2 AND storyboard_id = $3
-                    """,
-                    item.sort_order,
-                    f_uuid,
-                    sb_uuid,
-                )
-
-        # Update storyboard timestamp
-        await conn.execute("UPDATE storyboards SET updated_at = NOW() WHERE id = $1", sb_uuid)
-
-    return {"status": "ok", "reordered": len(items)}
 
 
 # ========== AI Generate ==========

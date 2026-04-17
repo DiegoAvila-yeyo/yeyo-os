@@ -1,0 +1,101 @@
+≡ Hub
+📋Storyboard
+✕
+⚡
+Micrófono activo — Di "Yeyo" para hablar
+■ STOP
+HUB
+🖼️
+🎬
+💻
+⚡
+💬
+🧠
+🗺️
+🌐
+📋
+🧪
+🔭
+🏗️
+🖼️
+Imagen
+🎬
+Video
+💻
+Código
+⚡
+Automatizar
+💬
+Chat
+🧠
+Memoria
+🗺️
+MemoryMap
+🌐
+YeyoNet
+📋
+Storyboard
+🧪
+Laboratorio
+🔭
+Observatory
+🏗️
+Workshop
+✕ Cerrar
+📋 Assets
+▼
+🧑
+Personajes
+Importar desde nodo Imagen
+▼
+🏔️
+Fondos
+Importar desde nodo Imagen
+▼
+🎵
+Audio
+Grabar / importar audio
+▼
+📝
+Notas
+▼
+✨
+Generar con IA
+✨ Generar Storyboard
+🎬
+Storyboard Canvas
+3 frames · ⏱ 12s
+1
+#1
+Sin descripción
+⏹️
+4s
+📷
+2
+#2
+Sin descripción
+⏹️
+4s
+📷
+3
+#3
+Sin descripción
+⏹️
+4s
+📷
++
+Agregar frame
+🎞️ Detalles del Frame
+Selecciona un frame para editar sus detalles
+⏱ 12s (3 frames)
+1
+4s
+2
+4s
+3
+4s
+💾 Guardar
+📤 Exportar JSON
+▶️ Preview Animatic
+🤖 Auto Generar
+🎬 Enviar al Lab

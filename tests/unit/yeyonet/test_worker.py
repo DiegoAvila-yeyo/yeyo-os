@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import src.yeyonet.pipeline_steps as pipeline_steps
 import src.yeyonet.worker as worker_module
 from src.yeyonet.protocol import MessageType
 from src.yeyonet.worker import WorkerExecutor
@@ -51,9 +52,9 @@ async def test_exec_image_uses_real_image_service(monkeypatch):
         sent_messages.append(msg)
         return True
 
-    monkeypatch.setattr(worker_module, "get_image_service", lambda: service)
-    monkeypatch.setattr(worker_module, "get_generation_progress", fake_progress)
-    monkeypatch.setattr(worker_module, "IMAGE_PROGRESS_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(pipeline_steps, "get_image_service", lambda: service)
+    monkeypatch.setattr(pipeline_steps, "get_generation_progress", fake_progress)
+    monkeypatch.setattr(pipeline_steps, "IMAGE_PROGRESS_POLL_INTERVAL", 0.01)
 
     worker = WorkerExecutor("sat-1", send_fn)
     result = await worker._exec_image(
@@ -117,13 +118,13 @@ async def test_exec_image_raises_on_generator_error(monkeypatch):
         delay=0,
     )
 
-    monkeypatch.setattr(worker_module, "get_image_service", lambda: service)
+    monkeypatch.setattr(pipeline_steps, "get_image_service", lambda: service)
     monkeypatch.setattr(
-        worker_module,
+        pipeline_steps,
         "get_generation_progress",
         lambda: {"active": False, "step": 0, "total_steps": 0, "percent": 0},
     )
-    monkeypatch.setattr(worker_module, "IMAGE_PROGRESS_POLL_INTERVAL", 0)
+    monkeypatch.setattr(pipeline_steps, "IMAGE_PROGRESS_POLL_INTERVAL", 0)
 
     worker = WorkerExecutor("sat-1")
     with pytest.raises(RuntimeError, match="GPU OOM"):
@@ -132,7 +133,7 @@ async def test_exec_image_raises_on_generator_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_exec_image_validates_payload(monkeypatch):
-    monkeypatch.setattr(worker_module, "get_image_service", lambda: None)
+    monkeypatch.setattr(pipeline_steps, "get_image_service", lambda: None)
 
     worker = WorkerExecutor("sat-1")
 
@@ -141,3 +142,27 @@ async def test_exec_image_validates_payload(monkeypatch):
 
     with pytest.raises(ValueError, match="width must be between 256 and 1024"):
         await worker._exec_image("job-1", {"prompt": "a robot", "width": 128})
+
+
+@pytest.mark.asyncio
+async def test_exec_pipeline_step_wraps_step_output():
+    sent_messages = []
+
+    async def send_fn(msg):
+        sent_messages.append(msg)
+        return True
+
+    worker = WorkerExecutor("sat-1", send_fn)
+    result = await worker._exec_pipeline_step(
+        "job-2",
+        {
+            "step_type": "prepare_prompt",
+            "input": {"prompt": "  a ring pilot  ", "steps": 10},
+        },
+    )
+
+    assert result["step_type"] == "prepare_prompt"
+    assert result["output"]["status"] == "prepared"
+    assert result["output"]["prompt"] == "a ring pilot"
+    assert sent_messages[0].type == MessageType.JOB_PROGRESS
+    assert sent_messages[-1].payload["detail"] == "Prompt listo"

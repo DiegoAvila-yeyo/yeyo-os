@@ -46,7 +46,7 @@ from src.api.routes.media import router as media_router
 from src.api.routes.nodes import router as nodes_router
 from src.api.routes.code import router as code_router, set_ia_provider as set_code_ia, set_code_ia_provider, set_memory_service as set_code_memory
 from src.api.routes.video import router as video_router, get_ia_provider as video_get_ia, get_flash_memory as video_get_memory, set_video_memory_service
-from src.api.routes.yeyonet import router as yeyonet_router, get_invite_manager as yeyonet_get_invite, get_satellite_manager as yeyonet_get_sat, get_node_identity as yeyonet_get_identity, get_job_orchestrator as yeyonet_get_orchestrator, get_sync_manager as yeyonet_get_sync, get_yeyonet_client as yeyonet_get_client
+from src.api.routes.yeyonet import router as yeyonet_router, get_invite_manager as yeyonet_get_invite, get_satellite_manager as yeyonet_get_sat, get_node_identity as yeyonet_get_identity, get_job_orchestrator as yeyonet_get_orchestrator, get_sync_manager as yeyonet_get_sync, get_yeyonet_client as yeyonet_get_client, get_pipeline_orchestrator as yeyonet_get_pipeline
 from src.api.routes.cloud_sync import router as cloud_sync_router, get_cloud_sync as cloud_sync_get
 from src.api.routes.storyboard import router as storyboard_router, set_db_pool as set_storyboard_pool, set_ia_provider as set_storyboard_ia
 from src.api.routes.lab import router as lab_router, set_db_pool as set_lab_pool, set_ia_provider as set_lab_ia
@@ -75,6 +75,7 @@ _invite_manager = None  # YeyoNet InviteManager
 _satellite_manager = None  # YeyoNet SatelliteManager
 _yeyonet_relay = None  # YeyoNet Relay Server
 _job_orchestrator = None  # YeyoNet JobOrchestrator
+_pipeline_orchestrator = None  # YeyoNet PipelineOrchestrator
 _sync_manager = None  # YeyoNet SyncManager
 _cloud_sync = None  # Cloud Memory Sync (Supabase)
 _yeyonet_client = None  # YeyoNet Client (when acting as satellite)
@@ -92,8 +93,9 @@ def _get_fallback_node_id() -> str:
 
 async def _ensure_yeyonet_schema(pool: asyncpg.Pool) -> None:
     """Bootstrap YeyoNet schema if this database is missing its tables."""
-    migration_path = Path(__file__).resolve().parents[2] / "db" / "migrations" / "008_yeyonet.sql"
-    migration_sql = migration_path.read_text(encoding="utf-8")
+    migrations_dir = Path(__file__).resolve().parents[2] / "db" / "migrations"
+    base_migration_sql = (migrations_dir / "008_yeyonet.sql").read_text(encoding="utf-8")
+    pipeline_migration_sql = (migrations_dir / "014_yeyonet_pipeline.sql").read_text(encoding="utf-8")
 
     async with pool.acquire() as conn:
         schema_state = await conn.fetchrow(
@@ -105,20 +107,35 @@ async def _ensure_yeyonet_schema(pool: asyncpg.Pool) -> None:
                 to_regclass('public.yeyonet_job_results') IS NOT NULL AS job_results
             """
         )
-        if schema_state and all(schema_state.values()):
-            return
+        base_missing = not (schema_state and all(schema_state.values()))
+        if base_missing:
+            missing = [name for name, present in dict(schema_state).items() if not present] if schema_state else [
+                "nodes", "invitations", "jobs", "job_results"
+            ]
 
-        missing = [name for name, present in dict(schema_state).items() if not present] if schema_state else [
-            "nodes", "invitations", "jobs", "job_results"
-        ]
+            if schema_state and schema_state["nodes"]:
+                await conn.execute("DROP TRIGGER IF EXISTS auto_update_nodes_timestamp ON yeyonet_nodes")
+            if schema_state and schema_state["jobs"]:
+                await conn.execute("DROP TRIGGER IF EXISTS auto_update_jobs_timestamp ON yeyonet_jobs")
 
-        if schema_state and schema_state["nodes"]:
-            await conn.execute("DROP TRIGGER IF EXISTS auto_update_nodes_timestamp ON yeyonet_nodes")
-        if schema_state and schema_state["jobs"]:
-            await conn.execute("DROP TRIGGER IF EXISTS auto_update_jobs_timestamp ON yeyonet_jobs")
+            await conn.execute(base_migration_sql)
+            logger.info(f"  🌐 YeyoNet schema bootstrap: ✅ (missing={','.join(missing)})")
 
-        await conn.execute(migration_sql)
-        logger.info(f"  🌐 YeyoNet schema bootstrap: ✅ (missing={','.join(missing)})")
+        pipeline_state = await conn.fetchrow(
+            """
+            SELECT
+                to_regclass('public.yeyonet_pipeline_runs') IS NOT NULL AS pipeline_runs,
+                to_regclass('public.yeyonet_pipeline_steps') IS NOT NULL AS pipeline_steps,
+                to_regclass('public.yeyonet_artifacts') IS NOT NULL AS artifacts
+            """
+        )
+        if not pipeline_state or not all(pipeline_state.values()):
+            if pipeline_state and pipeline_state["pipeline_runs"]:
+                await conn.execute("DROP TRIGGER IF EXISTS auto_update_pipeline_runs_timestamp ON yeyonet_pipeline_runs")
+            if pipeline_state and pipeline_state["pipeline_steps"]:
+                await conn.execute("DROP TRIGGER IF EXISTS auto_update_pipeline_steps_timestamp ON yeyonet_pipeline_steps")
+            await conn.execute(pipeline_migration_sql)
+            logger.info("  🌐 YeyoNet pipeline schema bootstrap: ✅")
 
 
 @asynccontextmanager
@@ -130,6 +147,7 @@ async def lifespan(app: FastAPI):
     global _node_identity, _invite_manager, _satellite_manager
     global _yeyonet_relay
     global _job_orchestrator
+    global _pipeline_orchestrator
     global _sync_manager
     global _cloud_sync
     global _yeyonet_client, _yeyonet_client_holder, _yeyonet_init_error
@@ -234,6 +252,7 @@ async def lifespan(app: FastAPI):
     _satellite_manager = None
     _yeyonet_relay = None
     _job_orchestrator = None
+    _pipeline_orchestrator = None
     _sync_manager = None
     _yeyonet_init_error = None
     try:
@@ -257,6 +276,14 @@ async def lifespan(app: FastAPI):
             from src.yeyonet.job_orchestrator import JobOrchestrator
             _job_orchestrator = JobOrchestrator(pool, _yeyonet_relay)
             await _job_orchestrator.start()
+
+            from src.yeyonet.pipeline_orchestrator import PipelineOrchestrator
+            _pipeline_orchestrator = PipelineOrchestrator(
+                pool=pool,
+                job_orchestrator=_job_orchestrator,
+                local_node_id=_node_identity.node_id,
+            )
+            _job_orchestrator.add_result_listener(_pipeline_orchestrator.handle_job_result)
 
             # Wire relay handlers for job messages
             from src.yeyonet.protocol import MessageType as MT
@@ -496,11 +523,17 @@ def _wire_dependencies():
             return _sync_manager
         raise _yeyonet_unavailable("SyncManager")
 
+    async def _real_pipeline_orchestrator():
+        if _pipeline_orchestrator:
+            return _pipeline_orchestrator
+        raise _yeyonet_unavailable("PipelineOrchestrator")
+
     app.dependency_overrides[yeyonet_get_invite] = _real_invite_manager
     app.dependency_overrides[yeyonet_get_sat] = _real_satellite_manager
     app.dependency_overrides[yeyonet_get_identity] = _real_node_identity
     app.dependency_overrides[yeyonet_get_orchestrator] = _real_job_orchestrator
     app.dependency_overrides[yeyonet_get_sync] = _real_sync_manager
+    app.dependency_overrides[yeyonet_get_pipeline] = _real_pipeline_orchestrator
 
     # Cloud sync dependency (return None if not configured — routes handle gracefully)
     async def _real_cloud_sync():

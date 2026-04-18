@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from src.yeyonet.models import (
     InviteRequest,
     JobCreateRequest,
+    PipelineRunCreateRequest,
     RegisterRequest,
     RegisterResponse,
     SatelliteUpdate,
@@ -116,6 +117,10 @@ async def get_satellite_manager():
 
 async def get_node_identity():
     raise HTTPException(503, "NodeIdentity not initialized")
+
+
+async def get_pipeline_orchestrator():
+    raise HTTPException(503, "PipelineOrchestrator not initialized")
 
 
 # ─── Invitaciones ────────────────────────────────────────────
@@ -456,6 +461,45 @@ async def get_job_results(
     """Obtiene sub-resultados de un job distribuido."""
     results = await orchestrator.get_job_results(job_id)
     return results
+
+
+@router.get("/pipelines/flows")
+async def list_pipeline_flows(
+    pipeline=Depends(get_pipeline_orchestrator),
+):
+    """Lista los flows disponibles para el piloto circular."""
+    return {"flows": pipeline.list_flows()}
+
+
+@router.post("/pipelines/runs")
+async def create_pipeline_run(
+    request: PipelineRunCreateRequest,
+    pipeline=Depends(get_pipeline_orchestrator),
+    identity=Depends(get_node_identity),
+):
+    """Crea un run multi-step del piloto circular."""
+    try:
+        return await pipeline.create_run(
+            flow_id=request.flow_id,
+            input_payload=request.input,
+            requested_by=identity.node_id,
+            ring_node_ids=request.ring_node_ids,
+            priority=request.priority,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/pipelines/runs/{run_id}")
+async def get_pipeline_run(
+    run_id: str,
+    pipeline=Depends(get_pipeline_orchestrator),
+):
+    """Inspecciona un run completo con steps y artefactos."""
+    run = await pipeline.get_run(run_id)
+    if not run:
+        raise HTTPException(404, "Pipeline run no encontrado")
+    return run
 
 
 @router.delete("/jobs/{job_id}")

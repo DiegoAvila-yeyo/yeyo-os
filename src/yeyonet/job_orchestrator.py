@@ -25,6 +25,7 @@ JOB_REQUIREMENTS: dict[str, dict] = {
     "training_step": {"needs_gpu": True, "min_ram_gb": 6.0},
     "memory_sync": {"needs_gpu": False, "min_ram_gb": 0.5},
     "custom": {"needs_gpu": False, "min_ram_gb": 1.0},
+    "pipeline_step": {},
 }
 
 
@@ -39,9 +40,13 @@ class JobOrchestrator:
         self._relay = relay
         self._running = False
         self._dispatch_task: asyncio.Task | None = None
+        self._result_listeners: list = []
 
     def set_relay(self, relay) -> None:
         self._relay = relay
+
+    def add_result_listener(self, listener) -> None:
+        self._result_listeners.append(listener)
 
     async def start(self) -> None:
         self._running = True
@@ -294,25 +299,29 @@ class JobOrchestrator:
             return
 
         async with self._pool.acquire() as conn:
-            # Get highest priority queued job
-            job_row = await conn.fetchrow(
+            job_rows = await conn.fetch(
                 """
                 SELECT * FROM yeyonet_jobs
                 WHERE status = 'queued'
                 ORDER BY priority DESC, created_at ASC
-                LIMIT 1
+                LIMIT 20
                 """
             )
-            if not job_row:
+            if not job_rows:
+                return
+
+            job_row = None
+            node_id = None
+            for candidate in job_rows:
+                payload = candidate["payload"] if isinstance(candidate["payload"], dict) else json.loads(candidate["payload"])
+                node_id = await self._find_best_node(candidate["type"], conn, payload)
+                if node_id:
+                    job_row = candidate
+                    break
+            if not job_row or not node_id:
                 return
 
             job_id = str(job_row["id"])
-            job_type = job_row["type"]
-
-            # Find best node for this job
-            node_id = await self._find_best_node(job_type, conn)
-            if not node_id:
-                return  # No capable node available
 
             # Assign job
             await conn.execute(
@@ -341,9 +350,11 @@ class JobOrchestrator:
                     uuid.UUID(job_id),
                 )
 
-    async def _find_best_node(self, job_type: str, conn) -> str | None:
+    async def _find_best_node(self, job_type: str, conn, payload: dict | None = None) -> str | None:
         """Encuentra el mejor nodo disponible para un tipo de job."""
-        reqs = JOB_REQUIREMENTS.get(job_type, {})
+        reqs = dict(JOB_REQUIREMENTS.get(job_type, {}))
+        if payload and payload.get("requirements"):
+            reqs.update(payload["requirements"])
         connected_ids = self._relay.get_connected_ids() if self._relay else []
 
         if not connected_ids:
@@ -358,6 +369,7 @@ class JobOrchestrator:
             [uuid.UUID(nid) for nid in connected_ids],
         )
 
+        target_node_id = payload.get("target_node_id") if payload else None
         best_node = None
         best_score = -1
 
@@ -375,6 +387,8 @@ class JobOrchestrator:
             if res.get("ram_free_gb", 0) < reqs.get("min_ram_gb", 0):
                 continue
             if reqs.get("needs_ollama") and not res.get("ollama_models"):
+                continue
+            if target_node_id and node_id != target_node_id:
                 continue
 
             # Score: prefer least loaded, most capable
@@ -406,11 +420,16 @@ class JobOrchestrator:
         success = msg.payload.get("success", False)
         data = msg.payload.get("data", {})
         error = msg.payload.get("error", "")
+        job = await self.get_job(job_id)
 
         if success:
             await self.complete_job(job_id, data)
         else:
             await self.fail_job(job_id, error)
+
+        updated_job = await self.get_job(job_id) or job
+        for listener in self._result_listeners:
+            await listener(updated_job, success, data, error, node_id)
 
     async def get_queue_stats(self) -> dict:
         """Estadísticas de la cola de jobs."""

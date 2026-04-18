@@ -192,6 +192,37 @@ class TestJobOrchestratorFindBestNode:
         best = await orch._find_best_node("text_inference", conn)
         assert best is None
 
+    @pytest.mark.asyncio
+    async def test_target_node_id_forces_specific_node(self):
+        pool, conn = _make_pool()
+        node_a = str(uuid.uuid4())
+        node_b = str(uuid.uuid4())
+
+        relay = MagicMock()
+        relay.get_connected_ids.return_value = [node_a, node_b]
+
+        conn.fetch.return_value = [
+            {
+                "id": uuid.UUID(node_a),
+                "resources": json.dumps({"ram_free_gb": 8.0, "gpu_name": "M1"}),
+                "mode": "completo",
+            },
+            {
+                "id": uuid.UUID(node_b),
+                "resources": json.dumps({"ram_free_gb": 8.0, "gpu_name": "RTX 4090"}),
+                "mode": "completo",
+            },
+        ]
+
+        orch = JobOrchestrator(pool, relay=relay)
+        best = await orch._find_best_node(
+            "pipeline_step",
+            conn,
+            {"target_node_id": node_a, "requirements": {"needs_gpu": True}},
+        )
+
+        assert best == node_a
+
 
 class TestJobOrchestratorRetry:
     """Tests for fail_job retry logic."""
@@ -251,6 +282,14 @@ class TestJobOrchestratorHandlers:
         pool, conn = _make_pool()
         orch = JobOrchestrator(pool)
         job_id = str(uuid.uuid4())
+        listener = AsyncMock()
+        orch.add_result_listener(listener)
+        orch.get_job = AsyncMock(
+            side_effect=[
+                {"id": job_id, "type": "pipeline_step", "payload": {"run_id": "run-1", "step_id": "step-1"}},
+                {"id": job_id, "type": "pipeline_step", "payload": {"run_id": "run-1", "step_id": "step-1"}, "priority": 5},
+            ]
+        )
 
         msg = NetMessage(
             type=MessageType.JOB_RESULT,
@@ -262,6 +301,7 @@ class TestJobOrchestratorHandlers:
         conn.execute.assert_called_once()
         query = conn.execute.call_args[0][0]
         assert "status = 'completed'" in query
+        listener.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_handle_job_result_failure(self):
@@ -293,5 +333,5 @@ class TestJobRequirements:
 
     def test_all_types_have_requirements(self):
         for jt in ["image_generate", "video_render", "text_inference",
-                    "training_step", "memory_sync", "custom"]:
+                    "training_step", "memory_sync", "custom", "pipeline_step"]:
             assert jt in JOB_REQUIREMENTS

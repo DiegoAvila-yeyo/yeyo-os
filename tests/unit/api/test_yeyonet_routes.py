@@ -341,3 +341,66 @@ def test_disconnect_stops_full_satellite_runtime(client, monkeypatch):
     assert len(stop_calls) == 1
     assert clear_calls == [True]
     assert holder == {"client": None, "worker": None, "resource_monitor": None}
+
+
+def test_list_pipeline_flows(client):
+    class FakePipeline:
+        def list_flows(self):
+            return [{"flow_id": "image_prompt_ring_v1", "steps": ["prepare_prompt", "generate_image"]}]
+
+    client.app.dependency_overrides[yeyonet_routes.get_pipeline_orchestrator] = lambda: FakePipeline()
+    response = client.get("/api/v1/yeyonet/pipelines/flows")
+    client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["flows"][0]["flow_id"] == "image_prompt_ring_v1"
+
+
+def test_create_pipeline_run_passes_identity_and_payload(client):
+    captured: dict[str, object] = {}
+
+    class FakePipeline:
+        async def create_run(self, **kwargs):
+            captured.update(kwargs)
+            return {"run_id": "run-123", "status": "running"}
+
+    class FakeIdentity:
+        node_id = "central-1"
+
+    client.app.dependency_overrides[yeyonet_routes.get_pipeline_orchestrator] = lambda: FakePipeline()
+    client.app.dependency_overrides[yeyonet_routes.get_node_identity] = lambda: FakeIdentity()
+
+    response = client.post(
+        "/api/v1/yeyonet/pipelines/runs",
+        json={
+            "flow_id": "image_prompt_ring_v1",
+            "input": {"prompt": "a robot ring"},
+            "ring_node_ids": ["central-1", "sat-1"],
+            "priority": 7,
+        },
+    )
+
+    client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["run_id"] == "run-123"
+    assert captured == {
+        "flow_id": "image_prompt_ring_v1",
+        "input_payload": {"prompt": "a robot ring"},
+        "requested_by": "central-1",
+        "ring_node_ids": ["central-1", "sat-1"],
+        "priority": 7,
+    }
+
+
+def test_get_pipeline_run_returns_404_when_missing(client):
+    class FakePipeline:
+        async def get_run(self, run_id):
+            return None
+
+    client.app.dependency_overrides[yeyonet_routes.get_pipeline_orchestrator] = lambda: FakePipeline()
+    response = client.get("/api/v1/yeyonet/pipelines/runs/run-missing")
+    client.app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert "Pipeline run no encontrado" in response.json()["detail"]

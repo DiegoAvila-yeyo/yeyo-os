@@ -44,6 +44,7 @@ class JobType(str, Enum):
     TRAINING_STEP = "training_step"
     MEMORY_SYNC = "memory_sync"
     CUSTOM = "custom"
+    PIPELINE_STEP = "pipeline_step"
 
 
 class JobStatus(str, Enum):
@@ -53,6 +54,23 @@ class JobStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class PipelineRunStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class PipelineStepStatus(str, Enum):
+    PENDING = "pending"
+    ASSIGNED = "assigned"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
 
 
 # ─── Resource info reportada por cada nodo ───────────────────
@@ -169,3 +187,10 @@ class JobCreateRequest(BaseModel):
     payload: dict = Field(default_factory=dict)
     priority: int = Field(default=5, ge=1, le=10)
     timeout_seconds: int = Field(default=600, ge=30, le=7200)
+
+
+class PipelineRunCreateRequest(BaseModel):
+    flow_id: str = Field(default="image_prompt_ring_v1", min_length=1, max_length=100)
+    input: dict = Field(default_factory=dict)
+    ring_node_ids: list[str] = Field(default_factory=list)
+    priority: int = Field(default=5, ge=1, le=10)

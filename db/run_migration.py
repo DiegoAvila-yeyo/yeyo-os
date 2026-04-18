@@ -8,6 +8,10 @@ import sys
 import os
 import asyncio
 import asyncpg
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 
 async def run_migration(sql_file: str):
@@ -18,7 +22,7 @@ async def run_migration(sql_file: str):
 
     conn = await asyncpg.connect(database_url)
     try:
-        with open(sql_file, "r") as f:
+        with open(sql_file, "r", encoding="utf-8") as f:
             sql = f.read()
         await conn.execute(sql)
         print(f"✅ Migración ejecutada: {sql_file}")

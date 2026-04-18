@@ -34,58 +34,30 @@ class ConversationAgent(Agent):
     
     def get_system_prompt(self, context: Dict[str, Any]) -> str:
         """Retorna prompt del sistema especializado en conversaciones multi-turno."""
-        conversation_type = context.get("type", "general")  # support, info, sales, coaching, debug
-        tone = context.get("tone", "professional")  # professional, casual, friendly, formal
+        conversation_type = context.get("type", "general")
+        tone = context.get("tone", "professional")
         history_length = context.get("history_length", 0)
         
-        return f"""Eres especialista en conversaciones naturales y efectivas ({tone}).
+        return f"""Eres YeyoOS, un asistente de IA útil, directo y amigable ({tone}).
 
-Tu tarea es mantener conversación coherente y progresiva para: {conversation_type}.
+Mantén conversaciones naturales y coherentes. Tipo de conversación: {conversation_type}. Turnos previos: {history_length}.
 
-CONTEXTO:
-- Tipo: {conversation_type}
-- Tono: {tone}
-- Turnos previos: {history_length}
+REGLAS:
+- Responde directamente sin usar etiquetas ni encabezados internos (NO uses "ESTADO:", "ANÁLISIS:", etc.)
+- Sé conciso: 1-3 párrafos máximo
+- Mantén coherencia con el historial previo
+- Adapta el tono a: {tone}
+- Siempre ofrece ayuda o una pregunta de seguimiento relevante
 
-ESTADOS DE CONVERSACIÓN:
-1. GREETING (turno 1): Saludo cálido, identifica intención
-2. CLARIFYING: Haz preguntas precisas si necesitas más contexto
-3. GATHERING: Recolecta info específica (3-5 preguntas máximo)
-4. RESPONDING: Responde directo y útil
-5. CONFIRMING: Asegúrate que entendió/está satisfecho
-6. CLOSING: Resumen y llamado a acción
+Para {conversation_type}:
+- Support: Resuelve el problema paso a paso
+- Info: Datos precisos y útiles
+- Sales: Identifica necesidad y propón solución
+- Coaching: Preguntas reflexivas y motivación
+- Debug: Diagnóstico sistemático
+- General: Conversación natural y útil
 
-PRINCIPIOS:
-1. CONTEXTO: Mantén coherencia con historia previa
-2. CLARIDAD: Explica en máximo 3 párrafos
-3. EMPATÍA: Reconoce necesidades del usuario
-4. ACCIÓN: Siempre incluye próximo paso
-5. BREVEDAD: Sin información irrelevante
-6. CONFIRMACIÓN: Verifica comprensión cuando sea complejo
-
-ANTI-PATRONES A EVITAR:
-- Ignorar contexto previo
-- Hacer demasiadas preguntas (máx 2 por turno)
-- Respuestas genéricas
-- No reconocer emociones
-- Cerrar sin confirmar
-
-FORMATO DE RESPUESTA:
-- ESTADO ACTUAL: [Qué estado conversacional es]
-- INFORMACIÓN RECOLECTADA: [Resumir datos importantes]
-- ANÁLISIS: [Qué entendiste/qué falta]
-- RESPUESTA: [1-3 párrafos máximo]
-- PRÓXIMO PASO: [Acción específica o pregunta]
-- CONFIRMACIÓN: ¿Entendiste? ¿Necesitas clarificación?
-
-Para {conversation_type}: [Instrucciones específicas de dominio]
-- Support: Resuelve problema o escala apropiadamente
-- Info: Proporciona datos precisos y actualizados
-- Sales: Identifica necesidades, propone solución
-- Coaching: Hace preguntas reflexivas, motiva
-- Debug: Paso a paso, verifica cada solución
-
-Sé conciso pero cálido. Adapta al tono: {tone}."""
+Responde en el mismo idioma que el usuario."""
     
     def validate_input(self, agent_input: AgentInput) -> tuple[bool, str]:
         """Valida que sea mensaje conversacional."""
@@ -102,18 +74,12 @@ Sé conciso pero cálido. Adapta al tono: {tone}."""
     
     def validate_output(self, response: str) -> tuple[bool, str]:
         """Valida que sea respuesta conversacional."""
-        if not response or len(response.strip()) < 20:
-            return False, "Respuesta muy corta (menos de 20 caracteres)"
+        if not response or len(response.strip()) < 10:
+            return False, "Respuesta muy corta"
         
-        # Debe tener contenido principal
-        if len([line for line in response.split('\n') if line.strip()]) < 2:
-            return False, "Respuesta no tiene suficiente contenido"
-        
-        # Debe tener próximo paso o conclusión (mejorado - palabras más específicas)
-        has_closure = any(word in response.lower() for word in ["próximo paso", "siguiente paso", "¿entendiste", "¿preguntas?", "confirma"])
-        
-        if not has_closure and len(response) < 80:
-            return False, "Falta claridad sobre próximo paso: especifica '¿Entendiste?' o 'Próximo paso'"
+        # Must have some actual content lines
+        if len([line for line in response.split('\n') if line.strip()]) < 1:
+            return False, "Respuesta sin contenido"
         
         return True, ""
     

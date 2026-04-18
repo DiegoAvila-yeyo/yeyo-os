@@ -24,7 +24,7 @@ load_dotenv()
 
 import asyncpg
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -79,6 +79,7 @@ _sync_manager = None  # YeyoNet SyncManager
 _cloud_sync = None  # Cloud Memory Sync (Supabase)
 _yeyonet_client = None  # YeyoNet Client (when acting as satellite)
 _yeyonet_client_holder: dict = {}  # Mutable holder for dependency injection
+_yeyonet_init_error: str | None = None  # Last YeyoNet startup failure reason
 
 
 def _get_fallback_node_id() -> str:
@@ -131,7 +132,7 @@ async def lifespan(app: FastAPI):
     global _job_orchestrator
     global _sync_manager
     global _cloud_sync
-    global _yeyonet_client, _yeyonet_client_holder
+    global _yeyonet_client, _yeyonet_client_holder, _yeyonet_init_error
 
     _start_time = time.time()
     config = get_config()
@@ -228,6 +229,13 @@ async def lifespan(app: FastAPI):
     init_package_services()
 
     # 7. YeyoNet — Red distribuida
+    _node_identity = None
+    _invite_manager = None
+    _satellite_manager = None
+    _yeyonet_relay = None
+    _job_orchestrator = None
+    _sync_manager = None
+    _yeyonet_init_error = None
     try:
         from src.yeyonet.identity import NodeIdentity
         from src.yeyonet.invite_manager import InviteManager
@@ -262,8 +270,12 @@ async def lifespan(app: FastAPI):
             _yeyonet_relay.on_message(MT.MEMORY_SYNC, _sync_manager.handle_memory_sync)
 
             logger.info(f"  🌐 YeyoNet: ✅ (node={_node_identity.node_id[:8]}..., relay+jobs+sync=on)")
+        else:
+            _yeyonet_init_error = "PostgreSQL not available"
+            logger.warning("  🌐 YeyoNet: ❌ (PostgreSQL not available)")
     except Exception as e:
-        logger.warning(f"  🌐 YeyoNet: ❌ ({e})")
+        _yeyonet_init_error = f"{type(e).__name__}: {e}"
+        logger.exception(f"  🌐 YeyoNet: ❌ ({_yeyonet_init_error})")
 
     # 8. Cloud Memory Sync (Supabase) — optional
     import os
@@ -454,32 +466,41 @@ def _wire_dependencies():
     app.dependency_overrides[video_get_ia] = _real_video_ia
     app.dependency_overrides[video_get_memory] = _real_video_memory
 
+    def _yeyonet_unavailable(service_name: str) -> HTTPException:
+        detail = _yeyonet_init_error or "YeyoNet startup did not complete"
+        return HTTPException(503, f"{service_name} not initialized: {detail}")
+
     # YeyoNet dependencies
-    if _node_identity and _invite_manager and _satellite_manager:
-        async def _real_invite_manager():
+    async def _real_invite_manager():
+        if _invite_manager:
             return _invite_manager
+        raise _yeyonet_unavailable("InviteManager")
 
-        async def _real_satellite_manager():
+    async def _real_satellite_manager():
+        if _satellite_manager:
             return _satellite_manager
+        raise _yeyonet_unavailable("SatelliteManager")
 
-        async def _real_node_identity():
+    async def _real_node_identity():
+        if _node_identity:
             return _node_identity
+        raise _yeyonet_unavailable("NodeIdentity")
 
-        app.dependency_overrides[yeyonet_get_invite] = _real_invite_manager
-        app.dependency_overrides[yeyonet_get_sat] = _real_satellite_manager
-        app.dependency_overrides[yeyonet_get_identity] = _real_node_identity
-
-    if _job_orchestrator:
-        async def _real_job_orchestrator():
+    async def _real_job_orchestrator():
+        if _job_orchestrator:
             return _job_orchestrator
+        raise _yeyonet_unavailable("JobOrchestrator")
 
-        app.dependency_overrides[yeyonet_get_orchestrator] = _real_job_orchestrator
-
-    if _sync_manager:
-        async def _real_sync_manager():
+    async def _real_sync_manager():
+        if _sync_manager:
             return _sync_manager
+        raise _yeyonet_unavailable("SyncManager")
 
-        app.dependency_overrides[yeyonet_get_sync] = _real_sync_manager
+    app.dependency_overrides[yeyonet_get_invite] = _real_invite_manager
+    app.dependency_overrides[yeyonet_get_sat] = _real_satellite_manager
+    app.dependency_overrides[yeyonet_get_identity] = _real_node_identity
+    app.dependency_overrides[yeyonet_get_orchestrator] = _real_job_orchestrator
+    app.dependency_overrides[yeyonet_get_sync] = _real_sync_manager
 
     # Cloud sync dependency (return None if not configured — routes handle gracefully)
     async def _real_cloud_sync():

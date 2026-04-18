@@ -17,6 +17,7 @@ import os
 import time
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -86,6 +87,37 @@ def _get_fallback_node_id() -> str:
     import socket
     hostname = socket.gethostname()
     return hashlib.sha256(hostname.encode()).hexdigest()[:32]
+
+
+async def _ensure_yeyonet_schema(pool: asyncpg.Pool) -> None:
+    """Bootstrap YeyoNet schema if this database is missing its tables."""
+    migration_path = Path(__file__).resolve().parents[2] / "db" / "migrations" / "008_yeyonet.sql"
+    migration_sql = migration_path.read_text(encoding="utf-8")
+
+    async with pool.acquire() as conn:
+        schema_state = await conn.fetchrow(
+            """
+            SELECT
+                to_regclass('public.yeyonet_nodes') IS NOT NULL AS nodes,
+                to_regclass('public.yeyonet_invitations') IS NOT NULL AS invitations,
+                to_regclass('public.yeyonet_jobs') IS NOT NULL AS jobs,
+                to_regclass('public.yeyonet_job_results') IS NOT NULL AS job_results
+            """
+        )
+        if schema_state and all(schema_state.values()):
+            return
+
+        missing = [name for name, present in dict(schema_state).items() if not present] if schema_state else [
+            "nodes", "invitations", "jobs", "job_results"
+        ]
+
+        if schema_state and schema_state["nodes"]:
+            await conn.execute("DROP TRIGGER IF EXISTS auto_update_nodes_timestamp ON yeyonet_nodes")
+        if schema_state and schema_state["jobs"]:
+            await conn.execute("DROP TRIGGER IF EXISTS auto_update_jobs_timestamp ON yeyonet_jobs")
+
+        await conn.execute(migration_sql)
+        logger.info(f"  🌐 YeyoNet schema bootstrap: ✅ (missing={','.join(missing)})")
 
 
 @asynccontextmanager
@@ -202,6 +234,7 @@ async def lifespan(app: FastAPI):
         from src.yeyonet.satellite_manager import SatelliteManager
 
         if pool:
+            await _ensure_yeyonet_schema(pool)
             _node_identity = NodeIdentity(pool)
             await _node_identity.initialize(name="Central")
             _invite_manager = InviteManager(pool)

@@ -322,6 +322,42 @@ class TestJobOrchestratorHandlers:
         assert "status = 'failed'" in query
 
 
+class TestJobOrchestratorDispatch:
+    @pytest.mark.asyncio
+    async def test_try_dispatch_sends_selected_job_type(self):
+        pool, conn = _make_pool()
+        job_id = str(uuid.uuid4())
+        node_id = str(uuid.uuid4())
+
+        relay = MagicMock()
+        relay.get_connected_ids.return_value = [node_id]
+        relay.send_to_node = AsyncMock(return_value=True)
+
+        conn.fetch.side_effect = [
+            [
+                {
+                    "id": uuid.UUID(job_id),
+                    "type": "pipeline_step",
+                    "payload": json.dumps({"target_node_id": node_id, "requirements": {}}),
+                }
+            ],
+            [
+                {
+                    "id": uuid.UUID(node_id),
+                    "resources": json.dumps({"ram_free_gb": 8.0}),
+                    "mode": "completo",
+                }
+            ],
+        ]
+
+        orch = JobOrchestrator(pool, relay=relay)
+        await orch._try_dispatch()
+
+        relay.send_to_node.assert_awaited_once()
+        sent_msg = relay.send_to_node.await_args.args[1]
+        assert sent_msg.payload["job_type"] == "pipeline_step"
+
+
 class TestJobRequirements:
     """Tests for JOB_REQUIREMENTS constants."""
 
@@ -335,3 +371,17 @@ class TestJobRequirements:
         for jt in ["image_generate", "video_render", "text_inference",
                     "training_step", "memory_sync", "custom", "pipeline_step"]:
             assert jt in JOB_REQUIREMENTS
+
+
+def test_row_to_dict_decodes_json_payloads():
+    from src.yeyonet.job_orchestrator import _row_to_dict
+
+    row = {
+        "payload": json.dumps({"run_id": "run-1", "step_id": "step-1"}),
+        "result": json.dumps({"status": "completed"}),
+    }
+
+    data = _row_to_dict(row)
+
+    assert data["payload"] == {"run_id": "run-1", "step_id": "step-1"}
+    assert data["result"] == {"status": "completed"}

@@ -336,7 +336,7 @@ class JobOrchestrator:
             from_node="central",
             to_node=node_id,
             job_id=job_id,
-            job_type=job_type,
+            job_type=job_row["type"],
             payload=payload,
         )
         sent = await self._relay.send_to_node(node_id, msg)
@@ -456,4 +456,9 @@ def _row_to_dict(row: asyncpg.Record) -> dict:
             d[k] = str(v)
         elif isinstance(v, datetime):
             d[k] = v.isoformat()
+        elif isinstance(v, str) and v[:1] in {"{", "["}:
+            try:
+                d[k] = json.loads(v)
+            except ValueError:
+                pass
     return d

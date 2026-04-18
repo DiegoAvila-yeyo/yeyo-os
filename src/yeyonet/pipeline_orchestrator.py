@@ -198,8 +198,8 @@ class PipelineOrchestrator:
 
         step_input = self._build_step_input(
             step_type=pending_step["step_type"],
-            run_input=run_row["input_payload"] or {},
-            previous_output=previous_output,
+            run_input=_json_value(run_row["input_payload"], {}),
+            previous_output=_json_value(previous_output, {}),
             run_id=run_id,
         )
 
@@ -417,7 +417,7 @@ class PipelineOrchestrator:
                     "SELECT ring_node_ids FROM yeyonet_pipeline_runs WHERE id = $1",
                     uuid.UUID(run_id),
                 )
-            ring = list(row["ring_node_ids"] or []) if row else []
+            ring = list(_json_value(row["ring_node_ids"], [])) if row else []
         else:
             async with self._pool.acquire() as conn:
                 rows = await conn.fetch(
@@ -491,4 +491,20 @@ def _row_to_dict(row: asyncpg.Record | dict) -> dict:
             data[key] = str(value)
         elif isinstance(value, datetime):
             data[key] = value.isoformat()
+        elif isinstance(value, str) and value[:1] in {"{", "["}:
+            try:
+                data[key] = json.loads(value)
+            except ValueError:
+                pass
     return data
+
+
+def _json_value(value, default):
+    if value is None:
+        return default
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except ValueError:
+            return default
+    return value

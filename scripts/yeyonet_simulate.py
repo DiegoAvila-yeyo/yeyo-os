@@ -19,6 +19,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import random
 import signal
 import sys
@@ -39,8 +40,20 @@ except ImportError:
     websockets = None  # type: ignore[assignment]
 
 
-BASE_URL = "http://localhost:8000/api/v1/yeyonet"
-WS_URL = "ws://localhost:8000/ws/yeyonet"
+
+def _derive_ws_url(base_url: str) -> str:
+    origin = base_url.rstrip("/")
+    if origin.endswith("/api/v1/yeyonet"):
+        origin = origin[: -len("/api/v1/yeyonet")]
+    if origin.startswith("https://"):
+        return "wss://" + origin[len("https://"):] + "/ws/yeyonet"
+    if origin.startswith("http://"):
+        return "ws://" + origin[len("http://"):] + "/ws/yeyonet"
+    return origin + "/ws/yeyonet"
+
+
+BASE_URL = os.getenv("YEYONET_BASE_URL", "http://localhost:8000/api/v1/yeyonet").rstrip("/")
+WS_URL = os.getenv("YEYONET_WS_URL", _derive_ws_url(BASE_URL))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,11 +68,12 @@ log = logging.getLogger("yeyonet-sim")
 class SimSatellite:
     """Simulated satellite node."""
 
-    def __init__(self, index: int, node_id: str, token: str, name: str):
+    def __init__(self, index: int, node_id: str, token: str, name: str, ws_url: str):
         self.index = index
         self.node_id = node_id
         self.token = token
         self.name = name
+        self.ws_url = ws_url
         self.ws: Any = None
         self.connected = False
         self.heartbeats_sent = 0
@@ -98,18 +112,19 @@ async def create_invitation(client: httpx.AsyncClient, name: str) -> str:
 
 async def register_satellite(
     client: httpx.AsyncClient, code: str, name: str
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     r = await client.post(
         f"{BASE_URL}/register",
         json={"code": code, "node_name": name, "mode": "completo"},
     )
     r.raise_for_status()
     data = r.json()
-    return data["node_id"], data["auth_token"]
+    return data["node_id"], data["auth_token"], data.get("central_ws_url", WS_URL)
 
 
 async def remove_satellite(client: httpx.AsyncClient, node_id: str) -> None:
-    await client.delete(f"{BASE_URL}/satellites/{node_id}")
+    r = await client.delete(f"{BASE_URL}/satellites/{node_id}")
+    r.raise_for_status()
 
 
 async def create_test_job(client: httpx.AsyncClient) -> str | None:
@@ -170,13 +185,12 @@ async def satellite_ws_loop(sat: SimSatellite, stop: asyncio.Event) -> None:
     retry_delay = 2.0
     while not stop.is_set():
         try:
-            async with ws_client.connect(WS_URL) as ws:
+            async with ws_client.connect(sat.ws_url) as ws:
                 sat.ws = ws
-                sat.connected = True
                 log.info("✅ %s connected via WebSocket", sat.name)
 
                 # AUTH
-                auth_msg = _make_message("auth", sat.node_id, {"token": sat.token})
+                auth_msg = _make_message("auth", sat.node_id, {"auth_token": sat.token})
                 await ws.send(auth_msg)
 
                 # Read AUTH_OK / AUTH_FAIL
@@ -184,10 +198,13 @@ async def satellite_ws_loop(sat: SimSatellite, stop: asyncio.Event) -> None:
                     raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
                     resp = json.loads(raw)
                     if resp.get("type") in ("auth_fail", "AUTH_FAIL"):
+                        sat.connected = False
                         log.error("❌ %s auth rejected", sat.name)
                         return
+                    sat.connected = True
                     log.info("🔑 %s authenticated", sat.name)
                 except asyncio.TimeoutError:
+                    sat.connected = False
                     log.warning("⏱ %s auth timeout, continuing anyway", sat.name)
 
                 # Main loop: send heartbeats + resource reports
@@ -303,8 +320,8 @@ async def main(num_satellites: int, duration: int) -> None:
             name = f"sim-satellite-{i}"
             try:
                 code = await create_invitation(client, name)
-                node_id, token = await register_satellite(client, code, name)
-                sat = SimSatellite(i, node_id, token, name)
+                node_id, token, ws_url = await register_satellite(client, code, name)
+                sat = SimSatellite(i, node_id, token, name, ws_url)
                 satellites.append(sat)
                 log.info("  ✅ %s registered (id=%s…)", name, node_id[:8])
             except Exception as e:
@@ -373,6 +390,16 @@ if __name__ == "__main__":
         description="YeyoNet Local Simulation — simulate satellites on this machine"
     )
     parser.add_argument(
+        "--base-url",
+        default=BASE_URL,
+        help="Central API base URL (default: http://localhost:8000/api/v1/yeyonet)",
+    )
+    parser.add_argument(
+        "--ws-url",
+        default=None,
+        help="Override Central WebSocket URL (default: derived from base URL or register response)",
+    )
+    parser.add_argument(
         "--satellites",
         type=int,
         default=2,
@@ -385,4 +412,7 @@ if __name__ == "__main__":
         help="Duration in seconds (default: 60)",
     )
     args = parser.parse_args()
+
+    BASE_URL = args.base_url.rstrip("/")
+    WS_URL = args.ws_url.rstrip("/") if args.ws_url else _derive_ws_url(BASE_URL)
     asyncio.run(main(args.satellites, args.duration))

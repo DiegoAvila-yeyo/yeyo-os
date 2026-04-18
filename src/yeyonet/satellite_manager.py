@@ -149,11 +149,41 @@ class SatelliteManager:
 
     async def remove_satellite(self, node_id: str) -> bool:
         """Desconecta y elimina un satélite."""
+        node_uuid = uuid.UUID(node_id)
         async with self._pool.acquire() as conn:
-            result = await conn.execute(
-                "DELETE FROM yeyonet_nodes WHERE id = $1 AND role = 'satellite'",
-                uuid.UUID(node_id),
-            )
+            async with conn.transaction():
+                await conn.execute(
+                    "UPDATE yeyonet_invitations SET used_by_node_id = NULL WHERE used_by_node_id = $1",
+                    node_uuid,
+                )
+                await conn.execute(
+                    "UPDATE yeyonet_jobs SET requested_by = NULL WHERE requested_by = $1",
+                    node_uuid,
+                )
+                await conn.execute(
+                    """
+                    UPDATE yeyonet_jobs
+                    SET
+                        assigned_to = NULL,
+                        status = CASE WHEN status IN ('assigned', 'running') THEN 'queued' ELSE status END,
+                        progress = CASE WHEN status IN ('assigned', 'running') THEN 0 ELSE progress END,
+                        progress_detail = CASE
+                            WHEN status IN ('assigned', 'running')
+                                THEN 'Satellite removed; job returned to queue'
+                            ELSE progress_detail
+                        END
+                    WHERE assigned_to = $1
+                    """,
+                    node_uuid,
+                )
+                await conn.execute(
+                    "UPDATE yeyonet_job_results SET node_id = NULL WHERE node_id = $1",
+                    node_uuid,
+                )
+                result = await conn.execute(
+                    "DELETE FROM yeyonet_nodes WHERE id = $1 AND role = 'satellite'",
+                    node_uuid,
+                )
         deleted = result.split()[-1] != "0"
         if deleted:
             logger.info(f"[yeyonet] Satélite eliminado: {node_id[:8]}...")

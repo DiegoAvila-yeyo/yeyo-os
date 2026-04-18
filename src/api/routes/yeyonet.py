@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from src.yeyonet.models import (
@@ -21,6 +21,11 @@ from src.yeyonet.models import (
 logger = logging.getLogger("yeyonet.routes")
 
 router = APIRouter(prefix="/api/v1/yeyonet", tags=["yeyonet"])
+
+
+def _build_central_ws_url(request: Request) -> str:
+    scheme = "wss" if request.url.scheme == "https" else "ws"
+    return f"{scheme}://{request.url.netloc}/ws/yeyonet"
 
 
 # ─── Dependency injection placeholders ───────────────────────
@@ -99,34 +104,35 @@ async def delete_invitation(
 
 @router.post("/register", response_model=RegisterResponse)
 async def register_satellite(
-    request: RegisterRequest,
+    body: RegisterRequest,
+    http_request: Request,
     invite_mgr=Depends(get_invite_manager),
     sat_mgr=Depends(get_satellite_manager),
     identity=Depends(get_node_identity),
 ):
     """Un satélite se registra usando un código de invitación."""
     # Validar código
-    invitation = await invite_mgr.validate_code(request.code)
+    invitation = await invite_mgr.validate_code(body.code)
     if not invitation:
         raise HTTPException(400, "Código inválido, expirado o ya usado")
 
     # Registrar satélite
-    name = request.node_name or invitation.satellite_name
+    name = body.node_name or invitation.satellite_name
     node = await sat_mgr.register_satellite(
         name=name,
-        mode=request.mode,
+        mode=body.mode,
         permissions=invitation.permissions,
         visibility_level=invitation.visibility_level,
-        ollama_host=request.ollama_host,
+        ollama_host=body.ollama_host,
     )
 
     # Marcar invitación como usada
-    await invite_mgr.mark_used(request.code, node.id)
+    await invite_mgr.mark_used(body.code, node.id)
 
     return RegisterResponse(
         node_id=node.id,
         auth_token=node.auth_token,
-        central_ws_url=f"ws://localhost:8000/ws/yeyonet",
+        central_ws_url=_build_central_ws_url(http_request),
         permissions=node.permissions,
         visibility_level=node.visibility_level,
     )

@@ -14,10 +14,14 @@ import tempfile
 import time
 from typing import Callable, Awaitable
 
+from src.media.image_generator import get_generation_progress, get_image_service
+
 from .models import JobType
 from .protocol import MessageType, NetMessage, make_job_progress, make_job_result
 
 logger = logging.getLogger("yeyonet.worker")
+
+IMAGE_PROGRESS_POLL_INTERVAL = 0.5
 
 
 class WorkerExecutor:
@@ -91,29 +95,82 @@ class WorkerExecutor:
     # ─── Executors por tipo ──────────────────────────────────
 
     async def _exec_image(self, job_id: str, payload: dict) -> dict:
-        """Genera una imagen (placeholder — integrar con Stable Diffusion/Flux)."""
-        prompt = payload.get("prompt", "")
-        width = payload.get("width", 512)
-        height = payload.get("height", 512)
-        steps = payload.get("steps", 20)
+        """Genera una imagen real usando el backend local de Stable Diffusion."""
+        prompt = str(payload.get("prompt", "")).strip()
+        if not prompt:
+            raise ValueError("prompt is required")
 
-        await self._report_progress(job_id, 10, "Cargando modelo")
+        negative_prompt = str(payload.get("negative_prompt", "")).strip()
+        width = int(payload.get("width", 512))
+        height = int(payload.get("height", 512))
+        steps = int(payload.get("steps", 20))
+        guidance_scale = float(payload.get("guidance_scale", 7.5))
+        seed = payload.get("seed")
 
-        # TODO: Integrar con diffusers pipeline real
-        # Por ahora simula el trabajo
-        total_steps = steps
-        for i in range(total_steps):
-            await asyncio.sleep(0.1)  # Simulated step time
-            pct = int((i + 1) / total_steps * 90) + 10
-            await self._report_progress(job_id, pct, f"Step {i+1}/{total_steps}")
+        if not 256 <= width <= 1024:
+            raise ValueError("width must be between 256 and 1024")
+        if not 256 <= height <= 1024:
+            raise ValueError("height must be between 256 and 1024")
+        if not 1 <= steps <= 100:
+            raise ValueError("steps must be between 1 and 100")
+        if not 1.0 <= guidance_scale <= 20.0:
+            raise ValueError("guidance_scale must be between 1.0 and 20.0")
+        if seed is not None:
+            seed = int(seed)
 
+        service = get_image_service()
+        await self._report_progress(job_id, 5, "Preparando generador de imagen")
+
+        generation_task = asyncio.create_task(
+            service.generate(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                steps=steps,
+                guidance_scale=guidance_scale,
+                width=width,
+                height=height,
+                seed=seed,
+            )
+        )
+
+        last_progress = None
+        last_detail = None
+        while not generation_task.done():
+            progress = get_generation_progress()
+            if progress.get("active"):
+                current_step = progress.get("step", 0)
+                total_steps = progress.get("total_steps", steps)
+                pct = max(10, min(95, int(progress.get("percent", 0))))
+                detail = f"Generando imagen ({current_step}/{total_steps})"
+            else:
+                pct = 10
+                detail = "Cargando modelo"
+
+            if pct != last_progress or detail != last_detail:
+                await self._report_progress(job_id, pct, detail)
+                last_progress = pct
+                last_detail = detail
+
+            await asyncio.sleep(IMAGE_PROGRESS_POLL_INTERVAL)
+
+        result = await generation_task
+        if not result.success:
+            raise RuntimeError(result.error or "Image generation failed")
+
+        await self._report_progress(job_id, 100, "Imagen generada")
         return {
             "type": "image",
+            "status": "generated",
             "prompt": prompt,
-            "width": width,
-            "height": height,
-            "steps": steps,
-            "status": "placeholder_generated",
+            "negative_prompt": negative_prompt,
+            "width": result.width,
+            "height": result.height,
+            "steps": result.steps_used,
+            "guidance_scale": guidance_scale,
+            "seed": seed,
+            "model": result.model,
+            "device": result.device,
+            "image_b64": f"data:image/png;base64,{result.image_b64}",
         }
 
     async def _exec_video(self, job_id: str, payload: dict) -> dict:

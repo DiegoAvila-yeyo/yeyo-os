@@ -434,7 +434,7 @@ async def connect_as_satellite(
         raise HTTPException(404, "No satellite config found. Register first.")
 
     # client_holder is a dict with "client" key, managed by main.py
-    holder = client_holder or {}
+    holder = client_holder if client_holder is not None else {}
     existing = holder.get("client")
 
     # If already connected, return status
@@ -482,7 +482,7 @@ async def disconnect_satellite(
     """Stop WebSocket client and clear config."""
     from src.yeyonet.satellite_config import clear_config
 
-    holder = client_holder or {}
+    holder = client_holder if client_holder is not None else {}
     existing = holder.get("client")
     if existing:
         await existing.stop()
@@ -501,7 +501,7 @@ async def get_connection_status(
     from src.yeyonet.satellite_config import load_config
 
     config = load_config()
-    holder = client_holder or {}
+    holder = client_holder if client_holder is not None else {}
     existing = holder.get("client")
 
     connected = bool(existing and existing.connected)

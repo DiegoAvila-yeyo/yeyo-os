@@ -55,6 +55,27 @@ def _extract_upstream_error(response: httpx.Response):
     return payload or response.text.strip() or f"HTTP {response.status_code}"
 
 
+def _describe_http_error(exc: httpx.HTTPError) -> str:
+    if isinstance(exc, httpx.ConnectTimeout):
+        base = "timeout de conexión"
+    elif isinstance(exc, httpx.ReadTimeout):
+        base = "la Central no respondió a tiempo"
+    elif isinstance(exc, httpx.ConnectError):
+        base = "no se pudo abrir conexión TCP"
+    elif isinstance(exc, httpx.NetworkError):
+        base = "fallo de red"
+    elif isinstance(exc, httpx.RemoteProtocolError):
+        base = "la Central respondió con un protocolo inválido"
+    else:
+        base = exc.__class__.__name__
+
+    message = str(exc).strip()
+    if message and message.lower() != base.lower():
+        return f"{base}: {message}"
+
+    return base
+
+
 # ─── Dependency injection placeholders ───────────────────────
 
 async def get_invite_manager():
@@ -183,7 +204,16 @@ async def register_satellite_via_central(
             response = await client.post(register_url, json=payload)
     except httpx.HTTPError as exc:
         logger.warning("[satellite] failed remote register against %s: %s", central_url, exc)
-        raise HTTPException(502, f"No se pudo alcanzar la Central en {central_url}: {exc}") from exc
+        detail = _describe_http_error(exc)
+        raise HTTPException(
+            502,
+            (
+                f"No se pudo alcanzar la Central en {central_url}. "
+                "Verifica que el backend esté corriendo en :8000, expuesto en 0.0.0.0 "
+                "y que ambas PCs estén en la misma red. "
+                f"Detalle: {detail}"
+            ),
+        ) from exc
 
     if response.is_error:
         detail = _extract_upstream_error(response)

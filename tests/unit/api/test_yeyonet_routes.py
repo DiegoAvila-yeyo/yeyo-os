@@ -126,6 +126,37 @@ def test_register_via_central_handles_network_error(client, monkeypatch):
 
     assert response.status_code == 502
     assert "No se pudo alcanzar la Central" in response.json()["detail"]
+    assert "Detalle: no se pudo abrir conexión TCP: boom" in response.json()["detail"]
+
+
+def test_register_via_central_handles_empty_network_error_message(client, monkeypatch):
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json):
+            raise httpx.ConnectError("", request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(yeyonet_routes.httpx, "AsyncClient", FakeAsyncClient)
+
+    response = client.post(
+        "/api/v1/yeyonet/register-via-central",
+        json={
+            "central_url": "http://192.168.1.10:8000",
+            "code": "YEYO-ABCD-EFGH-IJKL",
+            "node_name": "Sat QA",
+            "mode": "minimo",
+        },
+    )
+
+    assert response.status_code == 502
+    assert "Detalle: no se pudo abrir conexión TCP" in response.json()["detail"]
 
 
 def test_register_via_central_requires_http_scheme(client):

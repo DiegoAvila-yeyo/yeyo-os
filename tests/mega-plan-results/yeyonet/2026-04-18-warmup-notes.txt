@@ -1,0 +1,28 @@
+YeyoNet warmup notes - 2026-04-18
+
+Commit synced:
+- ddbc667
+
+Backend restart command:
+- python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+
+Checks:
+- GET http://localhost:8000/api/v1/media/image/status
+  - loaded: true
+  - device: cuda
+  - model: runwayml/stable-diffusion-v1-5
+
+- Local warmup image generation started and loaded the model, but did not complete.
+  - Backend error: Temperatura critica: Generacion abortada por temperatura critica
+
+- GET http://localhost:8000/api/v1/yeyonet/connection
+  - configured: true
+  - connected: true
+  - central_ws_url: ws://192.168.101.159:8000/ws/yeyonet
+  - node_id: 3f35ce83-69fa-42f0-be84-bc982762f850
+  - central_name: http://192.168.101.159:8000
+
+Relevant note:
+- GET /api/v1/yeyonet/identity returned 503
+- GET /api/v1/yeyonet/satellites returned 503
+- Backend status reported PostgreSQL not available during this run

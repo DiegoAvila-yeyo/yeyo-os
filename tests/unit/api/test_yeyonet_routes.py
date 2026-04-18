@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import src.api.routes.yeyonet as yeyonet_routes
+import src.yeyonet.satellite_config as satellite_config
 
 
 @pytest.fixture
@@ -206,3 +207,137 @@ def test_get_identity_includes_suggested_central_urls(client, monkeypatch):
         "http://192.168.101.159:8000",
         "http://localhost:8000",
     ]
+
+
+def test_connect_rebuilds_runtime_when_only_websocket_client_exists(client, monkeypatch):
+    holder = {
+        "client": type("ExistingClient", (), {"connected": True})(),
+        "worker": None,
+        "resource_monitor": None,
+    }
+    stop_calls: list[dict] = []
+    start_calls: list[dict] = []
+
+    async def fake_stop(runtime_holder):
+        stop_calls.append(dict(runtime_holder))
+        runtime_holder["client"] = None
+        runtime_holder["worker"] = None
+        runtime_holder["resource_monitor"] = None
+
+    async def fake_start(runtime_holder, config):
+        start_calls.append(config)
+        runtime_holder["client"] = type("StartedClient", (), {"connected": False})()
+        runtime_holder["worker"] = object()
+        runtime_holder["resource_monitor"] = object()
+
+    monkeypatch.setattr(satellite_config, "load_config", lambda: {
+        "node_id": "sat-123",
+        "auth_token": "token-123",
+        "central_ws_url": "ws://127.0.0.1:8000/ws/yeyonet",
+        "central_name": "Central QA",
+    })
+    monkeypatch.setattr(yeyonet_routes, "_stop_satellite_runtime", fake_stop)
+    monkeypatch.setattr(yeyonet_routes, "_start_satellite_runtime", fake_start)
+    client.app.dependency_overrides[yeyonet_routes.get_yeyonet_client] = lambda: holder
+
+    response = client.post("/api/v1/yeyonet/connect")
+
+    client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "connecting",
+        "connected": False,
+        "central_ws_url": "ws://127.0.0.1:8000/ws/yeyonet",
+        "node_id": "sat-123",
+        "central_name": "Central QA",
+    }
+    assert len(stop_calls) == 1
+    assert start_calls == [{
+        "node_id": "sat-123",
+        "auth_token": "token-123",
+        "central_ws_url": "ws://127.0.0.1:8000/ws/yeyonet",
+        "central_name": "Central QA",
+    }]
+    assert holder["worker"] is not None
+    assert holder["resource_monitor"] is not None
+
+
+def test_connect_keeps_existing_runtime_when_config_matches(client, monkeypatch):
+    holder = {
+        "client": type(
+            "ExistingClient",
+            (),
+            {
+                "connected": True,
+                "_node_id": "sat-123",
+                "_auth_token": "token-123",
+                "_url": "ws://127.0.0.1:8000/ws/yeyonet",
+            },
+        )(),
+        "worker": object(),
+        "resource_monitor": object(),
+    }
+    start_calls: list[dict] = []
+    stop_calls: list[dict] = []
+
+    async def fake_start(runtime_holder, config):
+        start_calls.append(config)
+
+    async def fake_stop(runtime_holder):
+        stop_calls.append(dict(runtime_holder))
+
+    monkeypatch.setattr(satellite_config, "load_config", lambda: {
+        "node_id": "sat-123",
+        "auth_token": "token-123",
+        "central_ws_url": "ws://127.0.0.1:8000/ws/yeyonet",
+        "central_name": "Central QA",
+    })
+    monkeypatch.setattr(yeyonet_routes, "_start_satellite_runtime", fake_start)
+    monkeypatch.setattr(yeyonet_routes, "_stop_satellite_runtime", fake_stop)
+    client.app.dependency_overrides[yeyonet_routes.get_yeyonet_client] = lambda: holder
+
+    response = client.post("/api/v1/yeyonet/connect")
+
+    client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "already_connected",
+        "connected": True,
+        "central_ws_url": "ws://127.0.0.1:8000/ws/yeyonet",
+        "node_id": "sat-123",
+        "central_name": "Central QA",
+    }
+    assert start_calls == []
+    assert stop_calls == []
+
+
+def test_disconnect_stops_full_satellite_runtime(client, monkeypatch):
+    holder = {
+        "client": object(),
+        "worker": object(),
+        "resource_monitor": object(),
+    }
+    stop_calls: list[dict] = []
+    clear_calls: list[bool] = []
+
+    async def fake_stop(runtime_holder):
+        stop_calls.append(dict(runtime_holder))
+        runtime_holder["client"] = None
+        runtime_holder["worker"] = None
+        runtime_holder["resource_monitor"] = None
+
+    monkeypatch.setattr(yeyonet_routes, "_stop_satellite_runtime", fake_stop)
+    monkeypatch.setattr(satellite_config, "clear_config", lambda: clear_calls.append(True))
+    client.app.dependency_overrides[yeyonet_routes.get_yeyonet_client] = lambda: holder
+
+    response = client.post("/api/v1/yeyonet/disconnect")
+
+    client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "disconnected", "connected": False}
+    assert len(stop_calls) == 1
+    assert clear_calls == [True]
+    assert holder == {"client": None, "worker": None, "resource_monitor": None}

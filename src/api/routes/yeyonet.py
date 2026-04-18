@@ -528,6 +528,57 @@ async def get_yeyonet_client():
     return None
 
 
+async def _stop_satellite_runtime(holder: dict) -> None:
+    existing = holder.get("client")
+    if existing:
+        await existing.stop()
+        holder["client"] = None
+        logger.info("[satellite] WebSocket client stopped")
+
+    resource_monitor = holder.get("resource_monitor")
+    if resource_monitor:
+        await resource_monitor.stop()
+        holder["resource_monitor"] = None
+        logger.info("[satellite] Resource monitor stopped")
+
+    holder["worker"] = None
+
+
+async def _start_satellite_runtime(holder: dict, config: dict) -> None:
+    from src.yeyonet.client import YeyoNetClient
+    from src.yeyonet.worker import WorkerExecutor
+    from src.yeyonet.resource_monitor import ResourceMonitor
+    from src.yeyonet.protocol import MessageType as MT_sat
+
+    new_client = YeyoNetClient(
+        central_ws_url=config["central_ws_url"],
+        node_id=config["node_id"],
+        auth_token=config["auth_token"],
+    )
+    worker = WorkerExecutor(config["node_id"], new_client.send)
+    new_client.on(MT_sat.JOB_ASSIGN, worker.handle_job_assign)
+    new_client.on(MT_sat.JOB_CANCEL, worker.handle_job_cancel)
+
+    resource_monitor = ResourceMonitor()
+    resource_monitor.set_callback(new_client.send_resources)
+    await resource_monitor.start()
+    await new_client.start()
+
+    holder["client"] = new_client
+    holder["worker"] = worker
+    holder["resource_monitor"] = resource_monitor
+    logger.info(f"[satellite] WebSocket client started → {config['central_ws_url']}")
+    logger.info("[satellite] Worker + ResourceMonitor ready")
+
+
+def _runtime_matches_config(existing: object, config: dict) -> bool:
+    return (
+        getattr(existing, "_node_id", None) == config.get("node_id")
+        and getattr(existing, "_url", None) == config.get("central_ws_url")
+        and getattr(existing, "_auth_token", None) == config.get("auth_token")
+    )
+
+
 @router.post("/connect")
 async def connect_as_satellite(
     body: ConnectRequest | None = None,
@@ -552,9 +603,17 @@ async def connect_as_satellite(
     # client_holder is a dict with "client" key, managed by main.py
     holder = client_holder if client_holder is not None else {}
     existing = holder.get("client")
+    has_worker = holder.get("worker") is not None
+    has_resource_monitor = holder.get("resource_monitor") is not None
 
     # If already connected, return status
-    if existing and existing.connected:
+    if (
+        existing
+        and existing.connected
+        and has_worker
+        and has_resource_monitor
+        and _runtime_matches_config(existing, config)
+    ):
         return {
             "status": "already_connected",
             "connected": True,
@@ -563,24 +622,10 @@ async def connect_as_satellite(
             "central_name": config.get("central_name", ""),
         }
 
-    # Stop old client if exists but disconnected
-    if existing:
-        try:
-            await existing.stop()
-        except Exception:
-            pass
+    if existing or has_resource_monitor or has_worker:
+        await _stop_satellite_runtime(holder)
 
-    # Start new client
-    from src.yeyonet.client import YeyoNetClient
-
-    new_client = YeyoNetClient(
-        central_ws_url=config["central_ws_url"],
-        node_id=config["node_id"],
-        auth_token=config["auth_token"],
-    )
-    await new_client.start()
-    holder["client"] = new_client
-    logger.info(f"[satellite] WebSocket client started → {config['central_ws_url']}")
+    await _start_satellite_runtime(holder, config)
 
     return {
         "status": "connecting",
@@ -599,11 +644,8 @@ async def disconnect_satellite(
     from src.yeyonet.satellite_config import clear_config
 
     holder = client_holder if client_holder is not None else {}
-    existing = holder.get("client")
-    if existing:
-        await existing.stop()
-        holder["client"] = None
-        logger.info("[satellite] WebSocket client stopped")
+    if holder.get("client") or holder.get("resource_monitor") or holder.get("worker"):
+        await _stop_satellite_runtime(holder)
 
     clear_config()
     return {"status": "disconnected", "connected": False}

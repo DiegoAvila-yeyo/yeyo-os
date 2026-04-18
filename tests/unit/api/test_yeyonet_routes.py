@@ -172,3 +172,37 @@ def test_register_via_central_requires_http_scheme(client):
 
     assert response.status_code == 400
     assert "http://" in response.json()["detail"]
+
+
+def test_get_identity_includes_suggested_central_urls(client, monkeypatch):
+    class FakeIdentity:
+        async def get_node(self):
+            class Node:
+                id = "central-1"
+                name = "Central QA"
+                role = "central"
+                status = "online"
+
+            return Node()
+
+    client.app.dependency_overrides[yeyonet_routes.get_node_identity] = lambda: FakeIdentity()
+    monkeypatch.setattr(
+        yeyonet_routes,
+        "_suggest_central_urls",
+        lambda: ["http://192.168.101.159:8000", "http://localhost:8000"],
+    )
+
+    response = client.get("/api/v1/yeyonet/identity")
+
+    client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["node_id"] == "central-1"
+    assert data["name"] == "Central QA"
+    assert data["node_name"] == "Central QA"
+    assert data["role"] == "central"
+    assert data["suggested_central_urls"] == [
+        "http://192.168.101.159:8000",
+        "http://localhost:8000",
+    ]

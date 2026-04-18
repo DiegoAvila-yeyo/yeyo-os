@@ -65,6 +65,7 @@ export interface NodeIdentity {
   node_id: string;
   node_name: string;
   role: string;
+  suggested_central_urls: string[];
 }
 
 export interface InviteResult {
@@ -152,6 +153,35 @@ function makeFallbackIdentity(current: ConnectionStatus | null): NodeIdentity {
     node_id: current?.node_id || 'local-no-db',
     node_name: current?.configured ? 'Satellite (degraded)' : 'Local (degraded)',
     role: current?.configured ? 'satellite' : 'degraded',
+    suggested_central_urls: [],
+  };
+}
+
+function normalizeIdentity(payload: unknown, current: ConnectionStatus | null): NodeIdentity {
+  const data = payload && typeof payload === 'object'
+    ? payload as Record<string, unknown>
+    : {};
+
+  const nodeId = typeof data.node_id === 'string' && data.node_id.trim()
+    ? data.node_id
+    : current?.node_id || 'local-no-db';
+  const nodeName = typeof data.node_name === 'string' && data.node_name.trim()
+    ? data.node_name
+    : typeof data.name === 'string' && data.name.trim()
+      ? data.name
+      : (current?.configured ? 'Satellite (degraded)' : 'Local (degraded)');
+  const role = typeof data.role === 'string' && data.role.trim()
+    ? data.role
+    : (current?.configured ? 'satellite' : 'degraded');
+  const suggestedCentralUrls = Array.isArray(data.suggested_central_urls)
+    ? data.suggested_central_urls.filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
+    : [];
+
+  return {
+    node_id: nodeId,
+    node_name: nodeName,
+    role,
+    suggested_central_urls: suggestedCentralUrls,
   };
 }
 
@@ -266,7 +296,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
       const res = await fetch(`${API}/identity`);
       if (!res.ok) throw new Error(await readApiError(res));
       const data = await res.json();
-      set({ identity: data });
+      set({ identity: normalizeIdentity(data, get().connectionStatus) });
     } catch (err) {
       const message = String(err);
       if (isDegradedYeyoNetError(message)) {

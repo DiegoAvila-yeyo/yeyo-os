@@ -5,6 +5,7 @@ Endpoints para gestionar la red distribuida.
 from __future__ import annotations
 
 import logging
+import socket
 from typing import Optional
 
 import httpx
@@ -74,6 +75,33 @@ def _describe_http_error(exc: httpx.HTTPError) -> str:
         return f"{base}: {message}"
 
     return base
+
+
+def _suggest_central_urls() -> list[str]:
+    candidates = ["http://localhost:8000", "http://127.0.0.1:8000"]
+
+    try:
+        import psutil
+
+        for interface_addrs in psutil.net_if_addrs().values():
+            for addr in interface_addrs:
+                if getattr(addr, "family", None) != socket.AF_INET:
+                    continue
+                ip = getattr(addr, "address", "")
+                if not ip or ip.startswith("127.") or ip.startswith("169.254.") or ip == "0.0.0.0":
+                    continue
+                candidates.append(f"http://{ip}:8000")
+    except Exception:
+        logger.debug("Could not derive suggested YeyoNet central URLs", exc_info=True)
+
+    seen: set[str] = set()
+    urls: list[str] = []
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        urls.append(candidate)
+    return urls
 
 
 # ─── Dependency injection placeholders ───────────────────────
@@ -327,11 +355,15 @@ async def get_identity(
     node = await identity.get_node()
     if not node:
         raise HTTPException(500, "No se pudo obtener la identidad del nodo")
+    role = node.role.value if hasattr(node.role, "value") else str(node.role)
+    status = node.status.value if hasattr(node.status, "value") else str(node.status)
     return {
         "node_id": node.id,
         "name": node.name,
-        "role": node.role,
-        "status": node.status,
+        "node_name": node.name,
+        "role": role,
+        "status": status,
+        "suggested_central_urls": _suggest_central_urls() if role == "central" else [],
     }
 
 

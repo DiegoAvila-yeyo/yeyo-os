@@ -11,9 +11,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   useYeyoNetStore,
   type Satellite,
-  type Job,
   type YeyoNetTab,
-  type ConnectionStatus,
 } from '@/stores/yeyonetStore';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -1046,6 +1044,11 @@ function ConfigTab() {
   const [regResult, setRegResult] = useState<{ node_id: string; auth_token: string } | null>(null);
   const [regError, setRegError] = useState('');
   const [disconnecting, setDisconnecting] = useState(false);
+  const suggestedCentralUrl = identity?.role === 'central'
+    ? (identity.suggested_central_urls.find(url => !url.includes('localhost') && !url.includes('127.0.0.1'))
+      ?? identity.suggested_central_urls[0]
+      ?? null)
+    : null;
 
   useEffect(() => { fetchIdentity(); fetchConnectionStatus(); }, [fetchIdentity, fetchConnectionStatus]);
 
@@ -1115,6 +1118,18 @@ function ConfigTab() {
               <span style={S.mutedLabel}>Rol:</span>
               <span style={S.tag('#00e676')}>{identity.role}</span>
             </div>
+            {suggestedCentralUrl && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={S.mutedLabel}>URL sugerida para satélites:</span>
+                <span style={{
+                  fontSize: 13, color: '#4fc3f7', fontFamily: 'monospace',
+                  background: '#0d0d1a', padding: '6px 10px', borderRadius: 4,
+                  userSelect: 'all', wordBreak: 'break-all',
+                }}>
+                  {suggestedCentralUrl}
+                </span>
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ color: '#556', fontSize: 12 }}>Cargando identidad...</div>

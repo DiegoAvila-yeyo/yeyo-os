@@ -199,7 +199,8 @@ class BackgroundTaskManager:
                 return
 
             contents = [row["content"] for row in rows]
-            embeddings = self.embeddings.generate_batch(contents)
+            loop = asyncio.get_event_loop()
+            embeddings = await loop.run_in_executor(None, self.embeddings.generate_batch, contents)
 
             async with self.memory.pool.acquire() as conn:
                 for row, embedding in zip(rows, embeddings):

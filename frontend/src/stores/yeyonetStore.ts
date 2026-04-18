@@ -366,29 +366,26 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   },
 
   registerAsSatellite: async (centralUrl: string, code: string, name: string, mode: string) => {
-    const url = `${centralUrl.replace(/\/$/, '')}/api/v1/yeyonet/register`;
+    const central = centralUrl.trim().replace(/\/$/, '');
     // Ensure code has dashes: YEYO-XXXX-XXXX-XXXX
     let formatted = code.replace(/-/g, '');
     if (formatted.length === 16) {
       formatted = `${formatted.slice(0,4)}-${formatted.slice(4,8)}-${formatted.slice(8,12)}-${formatted.slice(12,16)}`;
     }
-    const res = await fetch(url, {
+    const res = await fetch(`${API}/register-via-central`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: formatted, node_name: name, mode }),
+      body: JSON.stringify({ central_url: central, code: formatted, node_name: name, mode }),
     });
     if (!res.ok) throw new Error(await readApiError(res));
     const result = await res.json();
-
-    // Build correct WS URL from the centralUrl the user entered
-    const wsUrl = centralUrl.replace(/\/$/, '').replace(/^http/, 'ws') + '/ws/yeyonet';
 
     // Save config and start WebSocket client via local backend
     await get().connectAsSatellite({
       node_id: result.node_id,
       auth_token: result.auth_token,
-      central_ws_url: wsUrl,
-      central_name: centralUrl,
+      central_ws_url: result.central_ws_url,
+      central_name: central,
     });
 
     return result;

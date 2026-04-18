@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
@@ -26,6 +27,32 @@ router = APIRouter(prefix="/api/v1/yeyonet", tags=["yeyonet"])
 def _build_central_ws_url(request: Request) -> str:
     scheme = "wss" if request.url.scheme == "https" else "ws"
     return f"{scheme}://{request.url.netloc}/ws/yeyonet"
+
+
+def _normalize_central_url(raw_url: str) -> str:
+    central_url = raw_url.strip().rstrip("/")
+    if not central_url:
+        raise HTTPException(400, "URL de la Central requerida")
+    if not central_url.startswith(("http://", "https://")):
+        raise HTTPException(400, "La URL de la Central debe empezar con http:// o https://")
+    return central_url
+
+
+def _extract_upstream_error(response: httpx.Response):
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text.strip() or f"HTTP {response.status_code}"
+
+    if isinstance(payload, dict):
+        detail = payload.get("detail")
+        if detail:
+            return detail
+        error = payload.get("error")
+        if error:
+            return error
+
+    return payload or response.text.strip() or f"HTTP {response.status_code}"
 
 
 # ─── Dependency injection placeholders ───────────────────────
@@ -136,6 +163,33 @@ async def register_satellite(
         permissions=node.permissions,
         visibility_level=node.visibility_level,
     )
+
+
+class RemoteRegisterRequest(RegisterRequest):
+    central_url: str
+
+
+@router.post("/register-via-central", response_model=RegisterResponse)
+async def register_satellite_via_central(
+    body: RemoteRegisterRequest,
+):
+    """Registra este nodo usando la Central remota desde el backend local."""
+    central_url = _normalize_central_url(body.central_url)
+    register_url = f"{central_url}/api/v1/yeyonet/register"
+    payload = body.model_dump(exclude_none=True, exclude={"central_url"})
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            response = await client.post(register_url, json=payload)
+    except httpx.HTTPError as exc:
+        logger.warning("[satellite] failed remote register against %s: %s", central_url, exc)
+        raise HTTPException(502, f"No se pudo alcanzar la Central en {central_url}: {exc}") from exc
+
+    if response.is_error:
+        detail = _extract_upstream_error(response)
+        raise HTTPException(response.status_code, detail)
+
+    return RegisterResponse.model_validate(response.json())
 
 
 # ─── Gestión de satélites ───────────────────────────────────

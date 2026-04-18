@@ -123,6 +123,25 @@ interface YeyoNetState {
 
 const API = '/api/v1/yeyonet';
 
+async function readApiError(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    if (!text) return `HTTP ${res.status}`;
+
+    try {
+      const parsed = JSON.parse(text) as { detail?: unknown; error?: unknown };
+      if (typeof parsed.detail === 'string' && parsed.detail.trim()) return parsed.detail;
+      if (typeof parsed.error === 'string' && parsed.error.trim()) return parsed.error;
+      const serialized = JSON.stringify(parsed.detail ?? parsed.error ?? parsed);
+      return serialized !== '{}' ? serialized : `HTTP ${res.status}`;
+    } catch {
+      return text;
+    }
+  } catch {
+    return `HTTP ${res.status}`;
+  }
+}
+
 export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   satellites: [],
   jobs: [],
@@ -141,7 +160,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const res = await fetch(`${API}/satellites`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readApiError(res));
       const data = await res.json();
       set({ satellites: Array.isArray(data) ? data : [], loading: false });
     } catch (err) {
@@ -155,7 +174,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
       const params = new URLSearchParams({ limit: '50' });
       if (status) params.set('status', status);
       const res = await fetch(`${API}/jobs?${params}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readApiError(res));
       const data = await res.json();
       set({ jobs: Array.isArray(data) ? data : [], loading: false });
     } catch (err) {
@@ -166,7 +185,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   fetchJobStats: async () => {
     try {
       const res = await fetch(`${API}/jobs/stats`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readApiError(res));
       const data = await res.json();
       set({ jobStats: data });
     } catch (err) {
@@ -177,7 +196,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   fetchSyncStats: async () => {
     try {
       const res = await fetch(`${API}/sync/stats`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readApiError(res));
       const data = await res.json();
       set({ syncStats: data });
     } catch (err) {
@@ -188,7 +207,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   fetchIdentity: async () => {
     try {
       const res = await fetch(`${API}/identity`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readApiError(res));
       const data = await res.json();
       set({ identity: data });
     } catch (err) {
@@ -199,7 +218,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   fetchConnectionStatus: async () => {
     try {
       const res = await fetch(`${API}/connection`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readApiError(res));
       const data = await res.json();
       set({ connectionStatus: data });
     } catch (err) {
@@ -214,7 +233,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config ?? {}),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readApiError(res));
       // Refresh connection status after a short delay to allow WS handshake
       setTimeout(() => get().fetchConnectionStatus(), 2000);
       get().fetchConnectionStatus();
@@ -226,7 +245,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   disconnectSatellite: async () => {
     try {
       const res = await fetch(`${API}/disconnect`, { method: 'POST' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readApiError(res));
       set({ connectionStatus: { configured: false, connected: false, central_ws_url: null, node_id: null, central_name: null, connected_at: null } });
     } catch (err) {
       set({ error: String(err) });
@@ -239,10 +258,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
     });
-    if (!res.ok) {
-      const detail = await res.text();
-      throw new Error(detail || `HTTP ${res.status}`);
-    }
+    if (!res.ok) throw new Error(await readApiError(res));
     const data: InviteResult = await res.json();
     // Refresh satellites after invite
     get().fetchSatellites();
@@ -252,7 +268,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   cancelJob: async (jobId: string) => {
     try {
       const res = await fetch(`${API}/jobs/${jobId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readApiError(res));
       get().fetchJobs();
       get().fetchJobStats();
     } catch (err) {
@@ -263,7 +279,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   triggerSync: async (nodeId: string) => {
     try {
       const res = await fetch(`${API}/sync/trigger/${nodeId}`, { method: 'POST' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await readApiError(res));
       get().fetchSyncStats();
     } catch (err) {
       set({ error: String(err) });
@@ -282,11 +298,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: formatted, node_name: name, mode }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail ?? err);
-      throw new Error(detail || `HTTP ${res.status}`);
-    }
+    if (!res.ok) throw new Error(await readApiError(res));
     const result = await res.json();
 
     // Build correct WS URL from the centralUrl the user entered

@@ -122,6 +122,7 @@ interface YeyoNetState {
 }
 
 const API = '/api/v1/yeyonet';
+const DEGRADED_PG_DETAIL = 'PostgreSQL not available';
 
 async function readApiError(res: Response): Promise<string> {
   try {
@@ -142,6 +143,42 @@ async function readApiError(res: Response): Promise<string> {
   }
 }
 
+function isDegradedYeyoNetError(message: string): boolean {
+  return message.includes(DEGRADED_PG_DETAIL);
+}
+
+function makeFallbackIdentity(current: ConnectionStatus | null): NodeIdentity {
+  return {
+    node_id: current?.node_id || 'local-no-db',
+    node_name: current?.configured ? 'Satellite (degraded)' : 'Local (degraded)',
+    role: current?.configured ? 'satellite' : 'degraded',
+  };
+}
+
+function emptyJobStats(): JobStats {
+  return {
+    total: 0,
+    by_status: {
+      queued: 0,
+      assigned: 0,
+      running: 0,
+      completed: 0,
+      failed: 0,
+      cancelled: 0,
+    },
+    by_type: {},
+  };
+}
+
+function emptySyncStats(): SyncStats {
+  return {
+    total_memories: 0,
+    synced_memories: 0,
+    offline_queue_size: 0,
+    offline_queues: {},
+  };
+}
+
 export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   satellites: [],
   jobs: [],
@@ -149,7 +186,7 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
   syncStats: null,
   identity: null,
   connectionStatus: null,
-  activeTab: 'satellites',
+  activeTab: 'config',
   loading: false,
   error: null,
 
@@ -164,6 +201,11 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
       const data = await res.json();
       set({ satellites: Array.isArray(data) ? data : [], loading: false });
     } catch (err) {
+      const message = String(err);
+      if (isDegradedYeyoNetError(message)) {
+        set({ satellites: [], loading: false });
+        return;
+      }
       set({ error: String(err), loading: false });
     }
   },
@@ -178,6 +220,11 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
       const data = await res.json();
       set({ jobs: Array.isArray(data) ? data : [], loading: false });
     } catch (err) {
+      const message = String(err);
+      if (isDegradedYeyoNetError(message)) {
+        set({ jobs: [], loading: false });
+        return;
+      }
       set({ error: String(err), loading: false });
     }
   },
@@ -189,6 +236,11 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
       const data = await res.json();
       set({ jobStats: data });
     } catch (err) {
+      const message = String(err);
+      if (isDegradedYeyoNetError(message)) {
+        set({ jobStats: emptyJobStats() });
+        return;
+      }
       set({ error: String(err) });
     }
   },
@@ -200,6 +252,11 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
       const data = await res.json();
       set({ syncStats: data });
     } catch (err) {
+      const message = String(err);
+      if (isDegradedYeyoNetError(message)) {
+        set({ syncStats: emptySyncStats() });
+        return;
+      }
       set({ error: String(err) });
     }
   },
@@ -211,6 +268,11 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
       const data = await res.json();
       set({ identity: data });
     } catch (err) {
+      const message = String(err);
+      if (isDegradedYeyoNetError(message)) {
+        set({ identity: makeFallbackIdentity(get().connectionStatus) });
+        return;
+      }
       set({ error: String(err) });
     }
   },
@@ -220,7 +282,13 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
       const res = await fetch(`${API}/connection`);
       if (!res.ok) throw new Error(await readApiError(res));
       const data = await res.json();
-      set({ connectionStatus: data });
+      const currentIdentity = get().identity;
+      set({
+        connectionStatus: data,
+        identity: !currentIdentity || currentIdentity.role === 'degraded'
+          ? makeFallbackIdentity(data)
+          : currentIdentity,
+      });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -246,7 +314,18 @@ export const useYeyoNetStore = create<YeyoNetState>((set, get) => ({
     try {
       const res = await fetch(`${API}/disconnect`, { method: 'POST' });
       if (!res.ok) throw new Error(await readApiError(res));
-      set({ connectionStatus: { configured: false, connected: false, central_ws_url: null, node_id: null, central_name: null, connected_at: null } });
+      const disconnected = {
+        configured: false,
+        connected: false,
+        central_ws_url: null,
+        node_id: null,
+        central_name: null,
+        connected_at: null,
+      };
+      set({
+        connectionStatus: disconnected,
+        identity: makeFallbackIdentity(disconnected),
+      });
     } catch (err) {
       set({ error: String(err) });
     }

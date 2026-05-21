@@ -15,6 +15,7 @@ from typing import Optional, TYPE_CHECKING
 import asyncpg
 
 from .models import Memory
+from .pipeline_events import pipeline_buffer
 
 if TYPE_CHECKING:
     from .cache import MemoryCache
@@ -118,6 +119,23 @@ class FlashMemory:
                 json.dumps({"type": type, "source": source}),
             )
 
+        # Emitir pipeline event
+        _pipeline_source = source if source in ["chat", "code_dojo", "image", "automation"] else "automation"
+        _is_skill = type in ["skill", "fact"]
+        pipeline_buffer.emit(
+            pipeline_id=pipeline_buffer.new_pipeline(_pipeline_source),
+            step="STORED" if _is_skill else "RECEIVED",
+            status="ok",
+            detail=f"{type} en {namespace}",
+            metadata={
+                "memory_id": str(row["id"]),
+                "type": type,
+                "namespace": namespace,
+                "source": source,
+                "tier": row["tier"],
+            },
+        )
+
         logger.info(f"Memoria almacenada: {row['id']} tipo={type} tier={row['tier']}")
         memory = self._row_to_memory(row)
 
@@ -137,6 +155,15 @@ class FlashMemory:
           1. HOT desde Redis (sub-ms)
           2. WARM/COLD desde PostgreSQL para completar el límite
         """
+        _pipe_id = pipeline_buffer.new_pipeline("automation")
+        pipeline_buffer.emit(
+            pipeline_id=_pipe_id,
+            step="CONTEXT_LOAD",
+            status="ok",
+            detail=f"Buscando: {query[:80]}",
+            metadata={"query": query[:120]},
+        )
+
         results: list[Memory] = []
 
         # 1. Intentar HOT desde Redis

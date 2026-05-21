@@ -256,6 +256,87 @@ async def delete_memory_forbidden(memory_id: str):
     )
 
 
+# ========== Agent Store Endpoint ==========
+
+class AgentStoreRequest(BaseModel):
+    """Request simple para agentes externos (yeyo-harness, MCP clients)."""
+    content: str = Field(..., min_length=1, max_length=10000)
+    namespace: str = Field(default="chat:usuario")
+    type: str = Field(default="fact", pattern="^(conversation|preference|fact|correction|skill)$")
+    source: str = Field(default="yeyo-harness")
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+
+
+@router.post("/store")
+async def store_agent_memory(
+    request: AgentStoreRequest,
+    flash_memory=Depends(get_flash_memory),
+    embedding_service=Depends(get_embedding_service),
+):
+    """
+    Endpoint simplificado para que agentes externos (yeyo-harness, MCP)
+    guarden memoria. Acepta solo content, namespace, tags y metadata.
+    Usa defaults sensibles para campos como type, tier, importance.
+    """
+    try:
+        import asyncio
+        import json as _json
+
+        embedding = None
+        try:
+            loop = asyncio.get_event_loop()
+            embedding = await loop.run_in_executor(None, embedding_service.generate, request.content)
+        except Exception as e:
+            logger.warning(f"Embedding falló para agente: {e}")
+
+        async with flash_memory.pool.acquire() as conn:
+            if embedding:
+                vector_str = "[" + ",".join(str(x) for x in embedding) + "]"
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO flash_memories
+                        (content, type, tier, namespace, source, metadata, embedding, importance, tags)
+                    VALUES ($1, $2, 'WARM', $3, $4, $5, $6::vector, 0.5, $7)
+                    RETURNING id, created_at
+                    """,
+                    request.content, request.type, request.namespace,
+                    request.source, _json.dumps(request.metadata), vector_str,
+                    request.tags,
+                )
+            else:
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO flash_memories
+                        (content, type, tier, namespace, source, metadata, importance, tags)
+                    VALUES ($1, $2, 'WARM', $3, $4, $5, 0.5, $6)
+                    RETURNING id, created_at
+                    """,
+                    request.content, request.type, request.namespace,
+                    request.source, _json.dumps(request.metadata), request.tags,
+                )
+
+        await _emit_pipeline_event("store", {
+            "memory_id": str(row["id"]),
+            "namespace": request.namespace,
+            "type": request.type,
+            "source": request.source,
+            "embedding": embedding is not None,
+        })
+
+        return {
+            "id": str(row["id"]),
+            "created_at": row["created_at"].isoformat(),
+            "message": f"Memoria guardada en {request.namespace}",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error en agent store: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ========== Write Endpoints ==========
 
 @router.post("/manual")

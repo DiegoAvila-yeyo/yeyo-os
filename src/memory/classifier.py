@@ -27,6 +27,8 @@ VALID_NAMESPACES = {
     "video:acciones_humanas",
     "automatizacion:usuario",
     "automatizacion:conocimiento",
+    "herramienta:usuario",
+    "herramienta:resultado",
     "sistema:docs",
     "sistema:prompts",
     "descartado",
@@ -48,6 +50,8 @@ Namespaces disponibles:
 - video:acciones_humanas → movimientos corporales, poses, gestos, acciones físicas (caminar, saltar, bailar)
 - automatizacion:usuario → flujos y servicios del usuario, APIs que usa
 - automatizacion:conocimiento → patrones de automatización, webhooks, retry patterns
+- herramienta:usuario → herramientas preferidas del usuario, APIs, configs de tool calls
+- herramienta:resultado → resultados de ejecución de herramientas externas, output de bash/web_search
 - descartado → saludos, confirmaciones, ruido ("ok", "gracias", "sí", "no", "hola")
 
 Texto: {content}

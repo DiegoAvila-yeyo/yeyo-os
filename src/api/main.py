@@ -431,7 +431,7 @@ async def lifespan(app: FastAPI):
 def _wire_dependencies():
     """Inyecta los servicios reales en los routers via FastAPI dependency_overrides."""
     from src.api.routes.chat import get_chat_service, get_conversation_manager, get_feedback_service
-    from src.api.routes.memory import get_flash_memory, get_embedding_service, get_association_engine, get_memory_cache
+    from src.api.routes.memory import get_flash_memory, get_embedding_service, get_association_engine, get_memory_cache, get_ia_provider
     from src.api.routes.nodes import get_node_memory_service
 
     # Chat dependencies
@@ -466,6 +466,11 @@ def _wire_dependencies():
         return _memory_cache
 
     app.dependency_overrides[get_memory_cache] = _real_memory_cache
+
+    async def _real_ia_provider():
+        return _ia_provider
+
+    app.dependency_overrides[get_ia_provider] = _real_ia_provider
 
     # Node memory service
     if _flash_memory and _embedding_service:

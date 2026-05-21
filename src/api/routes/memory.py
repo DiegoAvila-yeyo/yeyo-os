@@ -102,6 +102,11 @@ async def get_flash_memory():
     raise HTTPException(status_code=503, detail="Flash Memory not initialized")
 
 
+async def get_ia_provider():
+    """Placeholder — sobreescribir con dependency injection."""
+    raise HTTPException(status_code=503, detail="IA Provider not initialized")
+
+
 async def get_embedding_service():
     """Placeholder — sobreescribir con dependency injection."""
     raise HTTPException(status_code=503, detail="Embedding service not initialized")
@@ -220,13 +225,17 @@ async def get_memory_associations(
     limit: int = Query(5, ge=1, le=50),
     association_engine=Depends(get_association_engine),
 ):
-    """Obtiene memorias asociadas a una memoria específica."""
+    """Obtiene memorias asociadas a una memoria específica.
+
+    Retorna formato compatible con YeyoOSClient.GraphQuery:
+    {"results": [...], "memory_id": "..."}
+    """
     try:
         related = await association_engine.find_related(
             memory_id=memory_id,
             limit=limit,
         )
-        return [
+        results = [
             AssociationResponse(
                 id=m.id,
                 content=m.content,
@@ -235,6 +244,11 @@ async def get_memory_associations(
             )
             for m in related
         ]
+        return {
+            "results": results,
+            "memory_id": memory_id,
+            "total": len(results),
+        }
     except Exception as e:
         logger.error(f"Error en asociaciones: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -837,6 +851,43 @@ async def memory_pipeline_events(
         "recent_events": pipeline_buffer.get_recent(limit * 10),
         "pipeline_defs": PIPELINE_DEFS,
     }
+
+
+# ─── Distillation Endpoint ──────────────────────────────────────────────────
+
+@router.post("/distill", operation_id="distill_cold")
+async def distill_cold_memories(
+    namespace: str | None = Query(None, description="Destilar solo este namespace (opcional)"),
+    flash_memory=Depends(get_flash_memory),
+    ia_provider=Depends(get_ia_provider),
+):
+    """
+    Ejecuta destilación de memorias COLD.
+    Agrupa memorias similares del mismo namespace y las compacta
+    vía LLM en un hecho canónico.
+
+    Sin ?namespace, destila todos los namespaces disponibles.
+    """
+    from src.memory.distillation import ColdDistillation
+
+    try:
+        distiller = ColdDistillation(flash_memory, ia_provider)
+
+        if namespace:
+            stats = await distiller.distill_namespace(namespace)
+        else:
+            stats = await distiller.distill_all()
+
+        return {
+            "status": "ok",
+            "stats": stats,
+            "namespace": namespace or "all",
+            "message": f"Destilación completada: {stats.get('distilled', 0)} grupos compactados",
+        }
+
+    except Exception as e:
+        logger.error(f"Error en destilación: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ─── Training Corpus Export ───────────────────────────────────────────────────

@@ -18,27 +18,44 @@ router = APIRouter(prefix="/api/v1/arena", tags=["arena"])
 
 # ========== IA Provider & WS Manager (injected from main.py) ==========
 
-_ia_provider = None
+_ia_provider = None          # modelo “seguro” (default)
+_hack_ia_provider = None     # instancia aislada (dolphin) — opcional
 _ws_manager = None
 _engine: Optional[BattleEngine] = None
 
 
+def _rebuild_engine() -> None:
+    global _engine
+    _engine = BattleEngine(
+        ia_provider=_ia_provider,
+        hack_ia_provider=_hack_ia_provider,
+        ws_manager=_ws_manager,
+    )
+
+
 def set_ia_provider(provider):
-    global _ia_provider, _engine
+    global _ia_provider
     _ia_provider = provider
-    _engine = BattleEngine(ia_provider=_ia_provider, ws_manager=_ws_manager)
+    _rebuild_engine()
+
+
+def set_hack_ia_provider(provider):
+    """Inyecta el provider de Ollama-HACK (dolphin) si está habilitado."""
+    global _hack_ia_provider
+    _hack_ia_provider = provider
+    _rebuild_engine()
 
 
 def set_ws_manager(ws):
-    global _ws_manager, _engine
+    global _ws_manager
     _ws_manager = ws
-    _engine = BattleEngine(ia_provider=_ia_provider, ws_manager=_ws_manager)
+    _rebuild_engine()
 
 
 def _get_engine() -> BattleEngine:
     global _engine
     if _engine is None:
-        _engine = BattleEngine(ia_provider=_ia_provider, ws_manager=_ws_manager)
+        _rebuild_engine()
     return _engine
 
 
@@ -46,6 +63,10 @@ def _get_engine() -> BattleEngine:
 
 class StartBattleRequest(BaseModel):
     max_rounds: int = Field(default=15, ge=1, le=100)
+    use_hack_model: bool = Field(
+        default=False,
+        description="Si True, el Red Team usa Ollama-HACK (ej: dolphin) si está habilitado",
+    )
 
 
 class SessionResponse(BaseModel):
@@ -95,8 +116,18 @@ class ScriptEntry(BaseModel):
 async def start_battle(req: StartBattleRequest):
     """Start a new Arena battle."""
     engine = _get_engine()
+
+    if req.use_hack_model and _hack_ia_provider is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "OLLAMA_HACK no está habilitado o no está disponible. "
+                "Activa OLLAMA_HACK_ENABLED=true y levanta una segunda instancia en :11435."
+            ),
+        )
+
     session_id = f"arena-{uuid.uuid4().hex[:8]}"
-    engine.create_session(session_id, max_rounds=req.max_rounds)
+    engine.create_session(session_id, max_rounds=req.max_rounds, use_hack_model=req.use_hack_model)
     await engine.start(session_id)
     session = engine.sessions[session_id]
     logger.info(f"⚔️ Arena battle started: {session_id} ({req.max_rounds} rounds)")

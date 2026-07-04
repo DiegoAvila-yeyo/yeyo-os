@@ -1,0 +1,1 @@
+"""Strategies (signals/proposals)."""

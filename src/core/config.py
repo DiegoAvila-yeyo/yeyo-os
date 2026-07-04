@@ -28,6 +28,27 @@ class YeyoConfig(BaseSettings):
     ollama_code_model: str = Field(default="qwen2.5-coder:7b", description="Modelo especializado para generación de código")
     ollama_timeout: float = Field(default=120.0, description="Timeout en segundos para llamadas a Ollama", ge=1.0)
 
+    # === Ollama (YEYO-HACK / aislado) ===
+    # Instancia separada para modelos “uncensored” (ej: dolphin-llama3).
+    # Off-by-default: solo se habilita si se setea OLLAMA_HACK_ENABLED=true.
+    ollama_hack_enabled: bool = Field(
+        default=False,
+        description="Habilita la instancia Ollama aislada para YEYO-HACK (off-by-default)",
+    )
+    ollama_hack_host: str = Field(
+        default="http://localhost:11435",
+        description="Host de la API de Ollama para YEYO-HACK (instancia separada)",
+    )
+    ollama_hack_model: str = Field(
+        default="dolphin-llama3",
+        description="Modelo 'uncensored' para YEYO-HACK (en instancia Ollama separada)",
+    )
+    ollama_hack_timeout: float = Field(
+        default=120.0,
+        description="Timeout en segundos para llamadas a Ollama-HACK",
+        ge=1.0,
+    )
+
     # === GPU ===
     gpu_vram_total_mb: int = Field(default=3072, description="VRAM total de la GPU en MB (GTX 1060 3GB)", ge=0)
     gpu_compositor_reserved_mb: int = Field(default=200, description="VRAM reservada para el compositor en MB", ge=0)

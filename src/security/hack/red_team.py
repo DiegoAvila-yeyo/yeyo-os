@@ -8,6 +8,7 @@ Solo corre dentro del Docker arena aislado.
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -15,8 +16,9 @@ from typing import Optional
 
 logger = logging.getLogger("yeyo.security.hack.red_team")
 
-RED_TEAM_MODEL = "dolphin-llama3"
-OLLAMA_BASE_URL = "http://localhost:11434"
+# Defaults alineados con la doc: Ollama-HACK separado (11435) + dolphin-llama3
+RED_TEAM_MODEL = os.getenv("OLLAMA_HACK_MODEL", "dolphin-llama3")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_HACK_HOST", "http://localhost:11435")
 
 
 class AttackVector(str, Enum):

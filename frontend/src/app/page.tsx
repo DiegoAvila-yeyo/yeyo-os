@@ -49,18 +49,19 @@ const NODOS_HUB: NodoLibreInfo[] = [
   { id: 'imagen',    label: 'Imagen',     tipo: 'image',      icono: '🖼️',  colorAcento: '#1e90ff' },
   { id: 'video',     label: 'Video',      tipo: 'video',      icono: '🎬',  colorAcento: '#9b59b6' },
   { id: 'codigo',    label: 'Código',     tipo: 'code',       icono: '💻',  colorAcento: '#2ecc71' },
+  { id: 'yeyo-pruebas', label: 'Yeyo-pruebas', tipo: 'code',  icono: '🧪',  colorAcento: '#7C4DFF' },
   { id: 'automacion',label: 'Automatizar',tipo: 'automation', icono: '⚡',  colorAcento: '#ffa500' },
   { id: 'chat',      label: 'Chat',       tipo: 'chat',       icono: '💬',  colorAcento: '#ff4444' },
   { id: 'memoria',   label: 'Memoria',    tipo: 'memory',     icono: '🧠',  colorAcento: '#00bcd4' },
   { id: 'mapa',      label: 'MemoryMap',  tipo: 'memory',     icono: '🗺️',  colorAcento: '#9c27b0' },
   { id: 'yeyonet',   label: 'YeyoNet',    tipo: 'network',    icono: '🌐',  colorAcento: '#00e676' },
   { id: 'storyboard', label: 'Storyboard', tipo: 'storyboard', icono: '📋', colorAcento: '#D4A847' },
-  { id: 'laboratorio', label: 'Laboratorio', tipo: 'lab', icono: '🧪', colorAcento: '#2196F3' },
+  { id: 'laboratorio', label: 'Laboratorio', tipo: 'lab', icono: '🧫', colorAcento: '#2196F3' },
   { id: 'observatory', label: 'Observatory', tipo: 'observatory', icono: '🔭', colorAcento: '#4CAF50' },
   { id: 'workshop', label: 'Workshop', tipo: 'workshop', icono: '🏗️', colorAcento: '#FF9800' },
 ];
 
-type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'automacion' | 'memoria' | 'mapa' | 'yeyonet' | 'storyboard' | 'laboratorio' | 'observatory' | 'workshop' | null;
+type WorkspaceId = 'imagen' | 'video' | 'codigo' | 'yeyo-pruebas' | 'automacion' | 'memoria' | 'mapa' | 'yeyonet' | 'storyboard' | 'laboratorio' | 'observatory' | 'workshop' | null;
 
 // ─── Workspace Router ──────────────────────────────────────────────────────────
 function WorkspaceRouter({
@@ -72,6 +73,8 @@ function WorkspaceRouter({
   onImageAssistantMessage,
   codeMessages,
   onCodeChatSend,
+  pruebasMessages,
+  onPruebasChatSend,
   videoClips,
   videoMessages,
   onVideoClipAdd,
@@ -85,6 +88,8 @@ function WorkspaceRouter({
   onImageAssistantMessage: (mensaje: string) => void;
   codeMessages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>;
   onCodeChatSend: (mensaje: string) => void;
+  pruebasMessages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>;
+  onPruebasChatSend: (mensaje: string) => void;
   videoClips: import('@/components/nodes/VideoNodeLayout').ClipInfo[];
   videoMessages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>;
   onVideoClipAdd: (clip: import('@/components/nodes/VideoNodeLayout').ClipInfo) => void;
@@ -122,6 +127,7 @@ function WorkspaceRouter({
       );
     case 'video':      return wrapper(<VideoNodeLayout clips={videoClips} chatMessages={videoMessages} onClipAdd={onVideoClipAdd} onChatSend={onVideoChatSend} />);
     case 'codigo':     return wrapper(<CodeNodeLayout chatMessages={codeMessages} onChatSend={onCodeChatSend} />);
+    case 'yeyo-pruebas': return wrapper(<CodeNodeLayout chatMessages={pruebasMessages} onChatSend={onPruebasChatSend} />);
     case 'automacion': return wrapper(<AutomationNodeLayout />);
     case 'memoria':    return wrapper(<MemoryNodeLayout />);
     case 'mapa':       return wrapper(<MemoryMapLayout />);
@@ -143,6 +149,7 @@ function HubPrincipal() {
   const [imageMessages, setImageMessages] = useState<ImageChatMessage[]>([]);
   const [imageGallery, setImageGallery] = useState<ImageGenerada[]>([]);
   const [codeMessages, setCodeMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([]);
+  const [pruebasMessages, setPruebasMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([]);
   const [videoClips, setVideoClips] = useState<import('@/components/nodes/VideoNodeLayout').ClipInfo[]>([]);
   const [videoMessages, setVideoMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([]);
 
@@ -150,6 +157,7 @@ function HubPrincipal() {
     imagen:     { label: 'Imagen',      icono: '🖼️' },
     video:      { label: 'Video',       icono: '🎬' },
     codigo:     { label: 'Código',      icono: '💻' },
+    'yeyo-pruebas': { label: 'Yeyo-pruebas', icono: '🧪' },
     automacion: { label: 'Automatizar', icono: '⚡' },
     memoria:    { label: 'Memoria',     icono: '🧠' },
     mapa:       { label: 'MemoryMap',   icono: '🗺️' },
@@ -166,7 +174,7 @@ function HubPrincipal() {
       useChatStore.getState().setPanelOpen(true);
       return;
     }
-    if (!['imagen', 'video', 'codigo', 'automacion', 'memoria', 'mapa', 'yeyonet', 'storyboard', 'laboratorio', 'observatory', 'workshop'].includes(nodeId)) return;
+    if (!['imagen', 'video', 'codigo', 'yeyo-pruebas', 'automacion', 'memoria', 'mapa', 'yeyonet', 'storyboard', 'laboratorio', 'observatory', 'workshop'].includes(nodeId)) return;
     const ws = nodeId as WorkspaceId;
     setActiveWorkspace(ws);
     const info = WORKSPACE_LABELS[nodeId];
@@ -294,6 +302,43 @@ function HubPrincipal() {
     }
   }, [codeMessages]);
 
+  const handlePruebasChatSend = useCallback(async (mensaje: string) => {
+    const userMsg = { id: `pruebas-${Date.now()}`, role: 'user' as const, content: mensaje };
+    const loadingId = `pruebas-loading-${Date.now()}`;
+    const loadingMsg = { id: loadingId, role: 'assistant' as const, content: '🤖 dolphin-llama3:8b...' };
+    setPruebasMessages(prev => [...prev, userMsg, loadingMsg]);
+
+    try {
+      const recentHistory = pruebasMessages.slice(-10).map(m => ({ role: m.role, content: m.content }));
+      const res = await fetch('http://localhost:8000/api/v1/pruebas/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: mensaje, history: recentHistory }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = data?.detail || 'Error desconocido';
+        setPruebasMessages(prev => prev.map(m => m.id === loadingId ? { ...m, content: `❌ ${detail}` } : m));
+        return;
+      }
+
+      const responseText = data?.response ?? '';
+      const model = data?.model ? `\n\n_model: ${data.model}_` : '';
+      const metrics = (typeof data?.latency_ms === 'number' || typeof data?.tokens_used === 'number')
+        ? `\n\n(${data.tokens_used ?? 0} tokens | ${data.latency_ms ?? 0}ms)`
+        : '';
+
+      setPruebasMessages(prev => prev.map(m =>
+        m.id === loadingId ? { ...m, content: `${responseText}${model}${metrics}` } : m
+      ));
+    } catch (err) {
+      setPruebasMessages(prev => prev.map(m =>
+        m.id === loadingId ? { ...m, content: `❌ Error: ${err}` } : m
+      ));
+    }
+  }, [pruebasMessages]);
+
   const handleVideoChatSend = useCallback(async (mensaje: string) => {
     const userMsg = { id: `video-${Date.now()}`, role: 'user' as const, content: mensaje };
     const loadingId = `video-loading-${Date.now()}`;
@@ -349,6 +394,8 @@ function HubPrincipal() {
               onImageAssistantMessage={handleImageAssistantMessage}
               codeMessages={codeMessages}
               onCodeChatSend={handleCodeChatSend}
+              pruebasMessages={pruebasMessages}
+              onPruebasChatSend={handlePruebasChatSend}
               videoClips={videoClips}
               videoMessages={videoMessages}
               onVideoClipAdd={(clip) => setVideoClips(prev => [...prev, clip])}

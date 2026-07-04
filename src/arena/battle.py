@@ -35,6 +35,7 @@ class BattleSession:
     current_round: int = 0
     red_score: int = 0
     blue_score: int = 0
+    use_hack_model: bool = False  # si True: Red Team usa instancia Ollama-HACK (ej dolphin)
     rounds: list[RoundResult] = field(default_factory=list)
     learned_combos: list[str] = field(default_factory=list)
     attack_history: list[dict] = field(default_factory=list)
@@ -193,16 +194,35 @@ class Guardian:
 class BattleEngine:
     """Orchestrates battles between YeyoHack and Guardian."""
 
-    def __init__(self, ia_provider=None, ws_manager=None):
-        self.hack = YeyoHack(ia_provider)
-        self.guardian = Guardian(ia_provider)
+    def __init__(
+        self,
+        ia_provider=None,
+        ws_manager=None,
+        *,
+        # Compat: si solo pasas ia_provider, ambos equipos usan ese.
+        red_ia_provider=None,
+        blue_ia_provider=None,
+        hack_ia_provider=None,
+    ):
+        self._red_ia = red_ia_provider or ia_provider
+        self._blue_ia = blue_ia_provider or ia_provider
+        self._hack_ia = hack_ia_provider
+
         self.ws = ws_manager
         self.sessions: dict[str, BattleSession] = {}
         self._tasks: dict[str, asyncio.Task] = {}
+        self._agents: dict[str, tuple[YeyoHack, Guardian]] = {}
 
-    def create_session(self, session_id: str, max_rounds: int = 15) -> BattleSession:
-        session = BattleSession(id=session_id, max_rounds=max_rounds)
+    def create_session(
+        self,
+        session_id: str,
+        max_rounds: int = 15,
+        *,
+        use_hack_model: bool = False,
+    ) -> BattleSession:
+        session = BattleSession(id=session_id, max_rounds=max_rounds, use_hack_model=use_hack_model)
         self.sessions[session_id] = session
+        self._agents[session_id] = (self._build_hack_agent(session), self._build_guardian_agent(session))
         return session
 
     async def start(self, session_id: str):
@@ -214,8 +234,22 @@ class BattleEngine:
         task = asyncio.create_task(self._battle_loop(session))
         self._tasks[session_id] = task
 
+    def _build_hack_agent(self, session: BattleSession) -> YeyoHack:
+        if session.use_hack_model and self._hack_ia is not None:
+            return YeyoHack(self._hack_ia)
+        return YeyoHack(self._red_ia)
+
+    def _build_guardian_agent(self, session: BattleSession) -> Guardian:
+        return Guardian(self._blue_ia)
+
     async def _battle_loop(self, session: BattleSession):
         """Main battle loop."""
+        agents = self._agents.get(session.id)
+        if agents is None:
+            agents = (self._build_hack_agent(session), self._build_guardian_agent(session))
+            self._agents[session.id] = agents
+        hack, guardian = agents
+
         for round_num in range(session.current_round + 1, session.max_rounds + 1):
             if session.status != 'running':
                 break
@@ -223,10 +257,10 @@ class BattleEngine:
             session.current_round = round_num
 
             # YeyoHack generates attack
-            attack_code, attack_type, severity = await self.hack.generate_attack(round_num)
+            attack_code, attack_type, severity = await hack.generate_attack(round_num)
 
             # Guardian detects and defends
-            detected, defense_code = await self.guardian.detect_and_defend(attack_code)
+            detected, defense_code = await guardian.detect_and_defend(attack_code)
 
             # Scoring
             if detected:
@@ -237,7 +271,7 @@ class BattleEngine:
                 session.red_score += 1
                 attack_success = True
                 defense_success = False
-                self.hack.successful_attacks.append({"type": attack_type, "round": round_num})
+                hack.successful_attacks.append({"type": attack_type, "round": round_num})
 
             round_result = RoundResult(
                 round_number=round_num,
@@ -273,7 +307,8 @@ class BattleEngine:
 
             # Evolution every 10 rounds
             if round_num % 10 == 0:
-                self.hack.evolve()
+                hack.evolve()
+                session.learned_combos = list(hack.learned_combos)
 
             # Auto-pause on critical attack
             if severity >= 9 and attack_success:

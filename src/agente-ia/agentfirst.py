@@ -1,0 +1,1 @@
+print("mi primer agente de inteligencia artificial")

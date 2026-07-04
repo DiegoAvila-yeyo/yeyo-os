@@ -53,7 +53,20 @@ from src.api.routes.lab import router as lab_router, set_db_pool as set_lab_pool
 from src.api.routes.observatory import router as observatory_router, set_db_pool as set_obs_pool, set_ia_provider as set_obs_ia, set_memory as set_obs_memory
 from src.api.routes.workshop import router as workshop_router, set_db_pool as set_workshop_pool, set_ia_provider as set_workshop_ia
 from src.api.routes.missions import router as missions_router, set_db_pool as set_missions_pool
-from src.api.routes.arena import router as arena_router, set_ia_provider as set_arena_ia, set_ws_manager as set_arena_ws
+from src.api.routes.arena import router as arena_router, set_ia_provider as set_arena_ia, set_hack_ia_provider as set_arena_hack_ia, set_ws_manager as set_arena_ws
+from src.api.routes.pruebas import (
+    router as pruebas_router,
+    set_ia_provider as set_pruebas_ia,
+    set_hack_ia_provider as set_pruebas_hack_ia,
+    set_flash_memory as set_pruebas_flash,
+    set_embedding_service as set_pruebas_embeddings,
+    set_node_memory_service as set_pruebas_node_memory,
+)
+from src.api.routes.pruebas_vault import (
+    router as pruebas_vault_router,
+    set_flash_memory as set_pruebas_vault_flash,
+    set_embedding_service as set_pruebas_vault_embeddings,
+)
 
 logger = logging.getLogger("yeyoos.api")
 
@@ -61,6 +74,7 @@ _start_time: float = 0.0
 
 # Servicios globales (inicializados en lifespan)
 _ia_provider: OllamaProvider | None = None
+_ia_provider_hack: OllamaProvider | None = None
 _flash_memory: FlashMemory | None = None
 _conv_manager: ConversationManager | None = None
 _feedback_service: FeedbackService | None = None
@@ -141,7 +155,7 @@ async def _ensure_yeyonet_schema(pool: asyncpg.Pool) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: conectar todos los servicios. Shutdown: cerrar conexiones."""
-    global _start_time, _ia_provider, _flash_memory, _conv_manager
+    global _start_time, _ia_provider, _ia_provider_hack, _flash_memory, _conv_manager
     global _feedback_service, _chat_service, _embedding_service, _association_engine
     global _memory_cache, _tier_manager, _background_manager
     global _node_identity, _invite_manager, _satellite_manager
@@ -166,6 +180,27 @@ async def lifespan(app: FastAPI):
     )
     ollama_ok = await _ia_provider.health_check()
     logger.info(f"  Ollama ({config.ollama_model}): {'✅' if ollama_ok else '❌'}")
+
+    # 1b. Ollama-HACK (dolphin / aislado) — off-by-default
+    _ia_provider_hack = None
+    if getattr(config, "ollama_hack_enabled", False):
+        try:
+            _ia_provider_hack = OllamaProvider(
+                host=config.ollama_hack_host,
+                model=config.ollama_hack_model,
+                timeout=config.ollama_hack_timeout,
+            )
+            hack_ok = await _ia_provider_hack.health_check()
+            logger.info(
+                f"  Ollama-HACK ({config.ollama_hack_model} @ {config.ollama_hack_host}): "
+                f"{'✅' if hack_ok else '❌'}"
+            )
+            if not hack_ok:
+                await _ia_provider_hack.close()
+                _ia_provider_hack = None
+        except Exception as e:
+            logger.warning(f"  Ollama-HACK: ❌ ({e})")
+            _ia_provider_hack = None
 
     # 2. PostgreSQL (Flash Memory + Conversations + Feedback)
     try:
@@ -421,6 +456,8 @@ async def lifespan(app: FastAPI):
         await _background_manager.stop()
     if _memory_cache:
         await _memory_cache.disconnect()
+    if _ia_provider_hack:
+        await _ia_provider_hack.close()
     if _ia_provider:
         await _ia_provider.close()
     if pool:
@@ -549,7 +586,25 @@ def _wire_dependencies():
 
     # Arena dependencies — IA provider + WebSocket manager
     set_arena_ia(_ia_provider)
+    set_arena_hack_ia(_ia_provider_hack)
     set_arena_ws(manager)
+
+    # Yeyo-pruebas dependencies — default IA + Ollama-HACK (dolphin)
+    set_pruebas_ia(_ia_provider)
+    set_pruebas_hack_ia(_ia_provider_hack)
+    set_pruebas_flash(_flash_memory)
+    set_pruebas_embeddings(_embedding_service)
+
+    try:
+        from src.memory.node_memory import NodeMemoryService
+        if _flash_memory and _embedding_service:
+            set_pruebas_node_memory(NodeMemoryService(_flash_memory, _embedding_service))
+    except Exception:
+        pass
+
+    # Yeyo-pruebas Vault ingest dependencies
+    set_pruebas_vault_flash(_flash_memory)
+    set_pruebas_vault_embeddings(_embedding_service)
 
 
 app = FastAPI(
@@ -600,7 +655,7 @@ async def status():
     else:
         services["postgresql"] = "not_configured"
 
-    # Ollama
+    # Ollama (default)
     if _ia_provider:
         try:
             ollama_ok = await _ia_provider.health_check()
@@ -611,6 +666,18 @@ async def status():
             services["ollama"] = "down"
     else:
         services["ollama"] = "not_configured"
+
+    # Ollama-HACK (dolphin)
+    if _ia_provider_hack:
+        try:
+            hack_ok = await _ia_provider_hack.health_check()
+            services["ollama_hack"] = "up" if hack_ok else "down"
+            if hack_ok:
+                services["ollama_hack_model"] = _ia_provider_hack.get_model_name()
+        except Exception:
+            services["ollama_hack"] = "down"
+    else:
+        services["ollama_hack"] = "not_configured"
 
     # Redis
     try:
@@ -664,6 +731,8 @@ app.include_router(observatory_router)
 app.include_router(workshop_router)
 app.include_router(missions_router)
 app.include_router(arena_router)
+app.include_router(pruebas_router)
+app.include_router(pruebas_vault_router)
 
 
 # ========== WebSocket ==========
